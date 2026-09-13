@@ -81,6 +81,14 @@ assets with `bun scripts/psp.ts --release --skip-maps --skip-weapons`.
 No fresh physical PSP playthrough or frame-rate measurement was performed;
 the screenshots and performance claims above describe earlier builds.
 
+**What remains for this checkpoint:** test large-map loading and repeated map
+switches on a physical PSP-1000; exercise buying, weapon switching, firing,
+reloading and bot combat across the available weapon models; and measure memory
+headroom and sustained frame rate. The release build and focused tests above
+pass, but do not establish that every map fits or that every weapon is visually
+correct on hardware. Waypointed bot navigation, networking and a stable mod
+package format remain future work.
+
 The PocketJS submodule temporarily points to the publication fork so a
 recursive checkout can retrieve the pending exact-size allocator fix.
 Maps, WADs, retail models and generated packages remain outside Git. Follow
@@ -331,9 +339,10 @@ The `strike` surface currently speaks: state snapshots (`hp`, `ammo`,
 PocketJS `ui` surface. Both mount into one realm — a mod can restyle the
 HUD and rewrite the rules in the same file.
 
-Out of scope for v0.1: multiple weapons, buy phases, waypointed bot
-navigation, networking, and a stable mod-distribution format. The surface
-grows by appending, never by renumbering.
+The September 12 checkpoint adds multiple weapons and buying/economy work to
+the earlier v0.1 baseline. Waypointed bot navigation, networking, and a stable
+mod-distribution format remain future work. The surface grows by appending,
+never by renumbering.
 
 ## Assets
 
