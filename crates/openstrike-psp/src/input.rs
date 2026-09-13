@@ -1,5 +1,6 @@
 //! PSP pad → sim input. Analog stick moves, face buttons look (Coded
-//! Arms-style), R fires, L jumps, d-pad down reloads, d-pad up walks.
+//! Arms-style), R fires, L crouch-jumps, d-pad left crouches, down reloads,
+//! and up walks. The HUD consumes d-pad arrows while its buy menu is open.
 
 use openstrike_core::sim::{MOUSE_SENS, SimInput};
 use psp::sys::CtrlButtons;
@@ -49,6 +50,10 @@ impl PadInput {
             move_y: -axis(ly),
             walk: buttons.contains(CtrlButtons::UP),
             jump: buttons.contains(CtrlButtons::LTRIGGER),
+            // L deliberately combines jump+crouch: the crouch hull is chosen
+            // before the jump impulse, allowing CS-style low-clearance jumps.
+            crouch: buttons.contains(CtrlButtons::LEFT)
+                || buttons.contains(CtrlButtons::LTRIGGER),
             fire: buttons.contains(CtrlButtons::RTRIGGER),
             reload: pressed.contains(CtrlButtons::DOWN),
         };

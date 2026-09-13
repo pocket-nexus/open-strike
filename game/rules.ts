@@ -13,18 +13,12 @@ export const ROUND_END_PAUSE = 3.5;
 
 // The rifle and the opposition, stated explicitly: change these numbers and
 // you have made a mod.
-strike.configureWeapon({
-  magSize: 30,
-  reserve: 90,
-  fireInterval: 0.105,
-  reloadTime: 2.4,
-  damageBody: 34,
-  damageHead: 100,
-});
+// Native core owns the CS 1.6 weapon catalog. Mods can still replace the
+// equipped weapon's tuning through strike.configureWeapon.
 strike.configureBots({
   count: 3,
-  speed: 190,
-  attackInterval: 1.4,
+  speed: 225,
+  attackInterval: 0.95,
   damageMin: 8,
   damageMax: 14,
 });

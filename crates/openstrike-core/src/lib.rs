@@ -20,7 +20,7 @@ pub use bot::{Bot, BotConfig, BotState};
 pub use sim::{Command, GameEvent, Phase, Player, Score, SimInput, StrikeSim};
 pub use weapon::{
     EffectKind, Effects, FxBeam, FxSprite, GUN_COLORS, MUZZLE_LOCAL, RANGE, RifleBox, Rng, Weapon,
-    WeaponConfig, rifle_boxes,
+    WeaponConfig, WeaponKind, rifle_boxes,
 };
 
 /// Animation playback state, mirrored into the desktop renderer's

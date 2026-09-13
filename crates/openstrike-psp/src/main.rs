@@ -21,6 +21,7 @@ mod input;
 mod maps;
 mod present;
 mod strike;
+mod weapon_model;
 
 use core::ffi::c_void;
 
@@ -118,20 +119,21 @@ unsafe fn run() {
         host::halt("no cooked maps found (maps/*.p3d next to the EBOOT)");
     }
     // One 16-aligned buffer sized for the largest map, reused across loads.
-    // The backing memory is never freed (arena world), so treating it as
-    // 'static is honest; soundness rule: the current Game (which borrows
-    // it through CookedMap) is dropped before any reload overwrites it.
-    let words = (max_map_bytes as usize + 15) / 16 + 1;
-    let map_buf_ptr = alloc::boxed::Box::leak(
-        alloc::vec![0u128; words].into_boxed_slice(),
-    )
-    .as_mut_ptr() as *mut u8;
-    let map_buf_cap = words * 16;
+    // This is a permanent exact-size arena carve, matching the old embedded
+    // P3D's memory cost. A Box/Vec allocation goes through the arena's
+    // recyclable power-of-two classes, where de_torn's 18.2 MB would become
+    // one impossible 32 MB allocation on PSP-1000.
+    let map_buf_cap = (max_map_bytes as usize + 15) & !15;
+    let map_buf_ptr = pocketjs_psp::arena::alloc_permanent(map_buf_cap, 16);
+    if map_buf_ptr.is_null() {
+        host::halt("not enough memory for the largest cooked map");
+    }
 
     let mut pool = FramePool::new();
     let sky_params = sky::SkyParams::default();
     let rifle = present::build_rifle();
     let bot_body = present::build_bot_body();
+    let mut weapon_model: Option<weapon_model::WeaponModel> = None;
 
     // ---- QuickJS ----
     let rt = pocketjs_psp::qjs_alloc::new_runtime();
@@ -264,6 +266,16 @@ unsafe fn run() {
         let bench_after_sync = bench_now();
         sys::sceDisplayWaitVblankStart();
         sys::sceGuSwapBuffers();
+        // Previous GE list is complete: weapon assets can now be replaced
+        // without the GPU retaining pointers into the old allocation.
+        if let Some(kind) = game.as_ref().map(|g| g.sim.weapon.kind) {
+            if weapon_model.as_ref().map(|m| m.kind) != Some(kind) {
+                drop(weapon_model.take());
+                weapon_model = weapon_model::WeaponModel::load(kind).ok();
+            }
+        } else {
+            weapon_model = None;
+        }
         #[cfg(feature = "bench")]
         let bench_after_present = bench_now();
         #[cfg(feature = "capture")]
@@ -293,7 +305,14 @@ unsafe fn run() {
             g.world.draw(&mut pool, &cam);
             present::draw_bots(&mut pool, &bot_body, &g.sim.bots);
             present::draw_effects(&mut pool, &g.sim, &cam);
-            present::draw_viewmodel(&mut pool, &rifle, &g.sim);
+            if g.sim.player.alive {
+                present::clear_viewmodel_depth();
+                if let Some(model) = &weapon_model {
+                    model.draw(&mut pool, g.sim.viewmodel_transform_at(1.0));
+                } else {
+                    present::draw_viewmodel(&mut pool, &rifle, &g.sim);
+                }
+            }
         }
         pocket3d_gu::end_3d();
         // The JSX HUD, unchanged from every other PocketJS host.

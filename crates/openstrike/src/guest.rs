@@ -225,6 +225,10 @@ fn build_state<'js>(
     o.set("losses", game.score.losses)?;
     let v = game.player.state.vel;
     o.set("speed", ((v.x * v.x + v.z * v.z).sqrt()) as f64)?;
+    o.set("money", game.money)?;
+    o.set("armor", game.armor)?;
+    o.set("crouched", game.player.crouched)?;
+    o.set("weapon", game.weapon.kind.name())?;
     Ok(o)
 }
 
@@ -293,6 +297,13 @@ fn mount_strike(guest: &Guest, commands: &Rc<RefCell<Vec<Command>>>) -> Result<(
         let q = commands.clone();
         op!("setBotCount", move |n: i32| {
             q.borrow_mut().push(Command::SetBotCount(n.max(0) as usize))
+        });
+
+        let q = commands.clone();
+        op!("buy", move |item: i32| {
+            if (0..=4).contains(&item) {
+                q.borrow_mut().push(Command::Buy(item as u8));
+            }
         });
 
         let q = commands.clone();

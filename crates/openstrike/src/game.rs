@@ -139,6 +139,7 @@ impl OpenStrike {
         let mut sim_input = SimInput {
             walk: input.key_down(KeyCode::ShiftLeft),
             jump: input.key_down(KeyCode::Space),
+            crouch: input.key_down(KeyCode::ControlLeft),
             fire: input.mouse_button_down(MouseButton::Left),
             reload: input.key_pressed(KeyCode::KeyR),
             ..Default::default()
@@ -244,4 +245,3 @@ impl OpenStrike {
         }
     }
 }
-

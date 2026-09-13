@@ -61,6 +61,32 @@ game grants itself no privileges a mod wouldn't have.
 
 ## Building
 
+### September 12 PSP-1000 progress: 32 MB map allocation fix
+
+Large maps previously passed through the arena's recyclable power-of-two
+allocator: an approximately 18.2 MB map buffer became a 32 MB allocation,
+which could not fit on a PSP-1000. The PSP host now permanently reserves the
+largest cooked map's actual size, rounded to 16-byte alignment, and reuses
+that buffer when changing maps. It reports an error if the buffer cannot fit.
+Other runtime allocations still need room; this does not make every map fit.
+
+This checkpoint also includes weapon buying and economy updates, bot weapon
+selection, HUD/input changes, and optional PSP weapon models cooked from your
+own Counter-Strike assets. Weapon assets are replaced after the previous GE
+list finishes, with the procedural viewmodel as a fallback.
+
+Fresh checks: 5 Rust core tests and 3 PSP toolchain tests passed; TypeScript
+checking and the release PSP EBOOT build passed. The build reused local cooked
+assets with `bun scripts/psp.ts --release --skip-maps --skip-weapons`.
+No fresh physical PSP playthrough or frame-rate measurement was performed;
+the screenshots and performance claims above describe earlier builds.
+
+The PocketJS submodule temporarily points to the publication fork so a
+recursive checkout can retrieve the pending exact-size allocator fix.
+Maps, WADs, retail models and generated packages remain outside Git. Follow
+the build instructions below with your own assets; `--skip-maps` and
+`--skip-weapons` are only for reusing already cooked local files.
+
 ```sh
 git clone --recursive https://github.com/pocket-stack/open-strike
 cd open-strike

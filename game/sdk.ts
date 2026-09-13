@@ -20,6 +20,10 @@ export interface StrikeState {
   wins: number;
   losses: number;
   speed: number;
+  money: number;
+  armor: number;
+  crouched: boolean;
+  weapon: string;
 }
 
 export type StrikeEvent =
@@ -57,6 +61,7 @@ export interface NativeStrike {
   setBotCount(n: number): void;
   configureWeapon(cfg: WeaponConfig): void;
   configureBots(cfg: BotsConfig): void;
+  buy(item: number): void;
   __dispatch?: (state: StrikeState, events: StrikeEvent[]) => void;
 }
 
@@ -79,6 +84,10 @@ let current: StrikeState = {
   wins: 0,
   losses: 0,
   speed: 0,
+  money: 800,
+  armor: 0,
+  crouched: false,
+  weapon: "PISTOL",
 };
 
 type Handler = (e: StrikeEvent) => void;
@@ -127,4 +136,5 @@ export const strike = {
   setBotCount: (n: number) => native.setBotCount(n),
   configureWeapon: (cfg: WeaponConfig) => native.configureWeapon(cfg),
   configureBots: (cfg: BotsConfig) => native.configureBots(cfg),
+  buy: (item: number) => native.buy(item),
 };

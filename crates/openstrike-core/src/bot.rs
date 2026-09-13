@@ -6,14 +6,14 @@ use glam::{Mat4, Vec3};
 use pocket3d_bsp::collide::{CharacterState, HullKind, MoveInput, MoveParams, step_character};
 use pocket3d_bsp::trace::{Hull, MapCollision};
 
-use crate::weapon::{EffectKind, Effects, Rng};
+use crate::weapon::{EffectKind, Effects, Rng, WeaponKind};
 use crate::{AnimPlayback, atan2f, sin_cos, sqrtf};
 
 pub const BOT_HEALTH: i32 = 100;
 pub const BOT_EYE: f32 = 20.0;
 const SIGHT_RANGE: f32 = 2600.0;
-const ATTACK_RANGE: f32 = 420.0;
-const LOSE_SIGHT_AFTER: f32 = 1.6;
+const ATTACK_RANGE: f32 = 760.0;
+const LOSE_SIGHT_AFTER: f32 = 4.0;
 
 /// Bot tuning — owned by the `strike` surface (mods set it through
 /// `strike.configureBots`). Defaults are the base game's difficulty.
@@ -60,6 +60,11 @@ pub struct Bot {
     attack_timer: f32,
     lost_timer: f32,
     pub death_time: f32,
+    pub weapon: WeaponKind,
+    pub armor: i32,
+    last_seen: Vec3,
+    detour: Vec3,
+    detour_left: f32,
 }
 
 pub struct BotShot {
@@ -80,6 +85,11 @@ impl Bot {
             attack_timer: 1.0,
             lost_timer: 0.0,
             death_time: 0.0,
+            weapon: WeaponKind::Glock18,
+            armor: 0,
+            last_seen: pos,
+            detour: pos,
+            detour_left: 0.0,
         }
     }
 
@@ -92,16 +102,48 @@ impl Bot {
     }
 
     pub fn hurt(&mut self, dmg: i32) -> bool {
+        self.hurt_with_armor(dmg, 1.0)
+    }
+
+    pub fn hurt_with_armor(&mut self, dmg: i32, armor_ratio: f32) -> bool {
         if !self.alive() {
             return false;
         }
-        self.health -= dmg;
+        let mut actual = dmg;
+        if self.armor > 0 {
+            let reduced = libm::roundf((dmg as f32) * armor_ratio) as i32;
+            let armor_cost = libm::roundf(((dmg - reduced).max(0) as f32) * 0.5) as i32;
+            if armor_cost <= self.armor {
+                actual = reduced;
+                self.armor -= armor_cost;
+            } else {
+                actual = (dmg - self.armor * 2).max(0);
+                self.armor = 0;
+            }
+        }
+        self.health -= actual;
         if self.health <= 0 {
             self.brain = BotState::Dead;
             self.death_time = 0.0;
             return true;
         }
         false
+    }
+
+    /// Tiny deterministic buy strategy: pistol opening, then SMG, then rifle
+    /// and armor. It mirrors a conservative CS economy without per-bot heaps.
+    pub fn buy_for_budget(&mut self, budget: i32) {
+        let mut left = budget;
+        self.weapon = if left >= 2700 {
+            left -= 2700;
+            WeaponKind::Ak47
+        } else if left >= 1250 {
+            left -= 1250;
+            WeaponKind::Mp5Navy
+        } else {
+            WeaponKind::Glock18
+        };
+        self.armor = if left >= 650 { 100 } else { 0 };
     }
 
     fn yaw_towards(&mut self, target: Vec3, dt: f32, rate: f32) {
@@ -148,6 +190,7 @@ impl Bot {
 
         if visible {
             self.lost_timer = 0.0;
+            self.last_seen = player_eye;
         } else {
             self.lost_timer += dt;
         }
@@ -189,10 +232,39 @@ impl Bot {
                 self.yaw_towards(self.state.pos + fwd * 100.0, dt, 4.0);
             }
             BotState::Chase => {
-                let dir = Vec3::new(to_player.x, 0.0, to_player.z).normalize_or_zero();
+                let target = if visible { player_eye } else { self.last_seen };
+                let mut dir = Vec3::new(
+                    target.x - self.state.pos.x,
+                    0.0,
+                    target.z - self.state.pos.z,
+                ).normalize_or_zero();
+                // A dynamic micro-waypoint gets around nearby corners until
+                // cooked map waypoints are available. Two hull probes choose
+                // the clearer side and the choice is held to prevent jitter.
+                let blocked = col.trace(
+                    Hull::Stand,
+                    self.state.pos,
+                    self.state.pos + dir * 72.0,
+                ).fraction < 1.0;
+                self.detour_left -= dt;
+                if blocked && self.detour_left <= 0.0 {
+                    let side = Vec3::new(-dir.z, 0.0, dir.x);
+                    let lp = col.trace(Hull::Stand, self.state.pos, self.state.pos + side * 96.0);
+                    let rp = col.trace(Hull::Stand, self.state.pos, self.state.pos - side * 96.0);
+                    let chosen = if lp.fraction >= rp.fraction { side } else { -side };
+                    self.detour = self.state.pos + chosen * 112.0 + dir * 64.0;
+                    self.detour_left = 0.75;
+                }
+                if self.detour_left > 0.0 {
+                    dir = Vec3::new(
+                        self.detour.x - self.state.pos.x,
+                        0.0,
+                        self.detour.z - self.state.pos.z,
+                    ).normalize_or_zero();
+                }
                 wish = dir;
                 speed = 1.0;
-                self.yaw_towards(player_eye, dt, 7.0);
+                self.yaw_towards(target, dt, 9.0);
             }
             BotState::Attack => {
                 self.yaw_towards(player_eye, dt, 9.0);
@@ -201,7 +273,13 @@ impl Bot {
                     self.attack_timer = cfg.attack_interval * rng.range(0.85, 1.25);
                     // Muzzle flash + tracer from the bot towards the player.
                     let from = self.eye() + Vec3::Y * 4.0;
-                    let miss = rng.f32() > (1.25 - dist / 900.0).clamp(0.25, 0.85);
+                    let skill = match self.weapon {
+                        WeaponKind::Pistol => 0.0,
+                        WeaponKind::Smg => 0.08,
+                        WeaponKind::Rifle => 0.16,
+                        _ => 0.12,
+                    };
+                    let miss = rng.f32() > (1.30 - dist / 1200.0 + skill).clamp(0.35, 0.92);
                     let aim = if miss {
                         player_eye
                             + Vec3::new(rng.signed(), rng.signed() * 0.4, rng.signed()) * 45.0
@@ -212,8 +290,16 @@ impl Bot {
                     effects.spawn(EffectKind::Tracer { a: from, b: aim }, 0.09);
                     if !miss {
                         let span = (cfg.damage_max - cfg.damage_min).max(0) as f32;
+                        let bonus = match self.weapon {
+                            WeaponKind::Pistol => 0,
+                            WeaponKind::Smg => 2,
+                            WeaponKind::Rifle => 5,
+                            _ => 4,
+                        };
                         shot = Some(BotShot {
-                            damage: cfg.damage_min + (rng.f32() * (span + 1.0)) as i32,
+                            damage: cfg.damage_min
+                                + bonus
+                                + (rng.f32() * (span + 1.0)) as i32,
                         });
                     }
                 }

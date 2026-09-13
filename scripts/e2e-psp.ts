@@ -76,7 +76,7 @@ let failures = 0;
 for (const spec of SPECS) {
   console.log(`\n## ${spec.name} (input: ${spec.input})`);
   console.log("# build capture EBOOT ...");
-  await $`bun scripts/psp.ts --capture`
+  await $`bun scripts/psp.ts --capture --skip-maps`
     .cwd(repo)
     .env({
       ...process.env,

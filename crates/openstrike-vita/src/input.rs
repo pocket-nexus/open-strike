@@ -75,6 +75,7 @@ impl PadInput {
                 move_y,
                 walk: sample.buttons & BTN_UP != 0,
                 jump: sample.buttons & BTN_L != 0,
+                crouch: sample.buttons & BTN_L != 0,
                 fire: sample.buttons & BTN_R != 0,
                 reload: pressed & BTN_DOWN != 0,
             },

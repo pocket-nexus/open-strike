@@ -7,6 +7,199 @@ use glam::Vec3;
 
 pub const RANGE: f32 = 8192.0;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WeaponKind {
+    // Legacy presets retained for mod/API compatibility.
+    Pistol,
+    Smg,
+    Rifle,
+    P228,
+    Glock18,
+    Scout,
+    Xm1014,
+    Mac10,
+    Aug,
+    Elite,
+    FiveSeven,
+    Ump45,
+    Sg550,
+    Galil,
+    Famas,
+    Usp,
+    Awp,
+    Mp5Navy,
+    M249,
+    M3,
+    M4A1,
+    Tmp,
+    G3Sg1,
+    Deagle,
+    Sg552,
+    Ak47,
+    P90,
+}
+
+impl WeaponKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Pistol => "PISTOL",
+            Self::Smg => "SMG",
+            Self::Rifle => "RIFLE",
+            Self::P228 => "P228",
+            Self::Glock18 => "GLOCK 18",
+            Self::Scout => "SCOUT",
+            Self::Xm1014 => "XM1014",
+            Self::Mac10 => "MAC-10",
+            Self::Aug => "AUG",
+            Self::Elite => "DUAL ELITES",
+            Self::FiveSeven => "FIVE-SEVEN",
+            Self::Ump45 => "UMP45",
+            Self::Sg550 => "SG-550",
+            Self::Galil => "GALIL",
+            Self::Famas => "FAMAS",
+            Self::Usp => "USP",
+            Self::Awp => "AWP",
+            Self::Mp5Navy => "MP5 NAVY",
+            Self::M249 => "M249",
+            Self::M3 => "M3",
+            Self::M4A1 => "M4A1",
+            Self::Tmp => "TMP",
+            Self::G3Sg1 => "G3SG1",
+            Self::Deagle => "DESERT EAGLE",
+            Self::Sg552 => "SG-552",
+            Self::Ak47 => "AK-47",
+            Self::P90 => "P90",
+        }
+    }
+
+    pub const fn asset_stem(self) -> &'static str {
+        match self {
+            Self::Pistol | Self::Glock18 => "glock18",
+            Self::Smg | Self::Mp5Navy => "mp5",
+            Self::Rifle | Self::Ak47 => "ak47",
+            Self::P228 => "p228", Self::Scout => "scout", Self::Xm1014 => "xm1014",
+            Self::Mac10 => "mac10", Self::Aug => "aug", Self::Elite => "elite",
+            Self::FiveSeven => "fiveseven", Self::Ump45 => "ump45", Self::Sg550 => "sg550",
+            Self::Galil => "galil", Self::Famas => "famas", Self::Usp => "usp",
+            Self::Awp => "awp", Self::M249 => "m249", Self::M3 => "m3",
+            Self::M4A1 => "m4a1", Self::Tmp => "tmp", Self::G3Sg1 => "g3sg1",
+            Self::Deagle => "deagle", Self::Sg552 => "sg552", Self::P90 => "p90",
+        }
+    }
+
+    /// Counter-Strike 1.6 purchase price. Legacy presets keep their original
+    /// OpenStrike prices so existing mods remain compatible.
+    pub const fn price(self) -> i32 {
+        match self {
+            Self::Pistol => 400, Self::Smg => 1250, Self::Rifle => 2700,
+            Self::P228 => 600, Self::Glock18 => 400, Self::Scout => 2750,
+            Self::Xm1014 => 3000, Self::Mac10 => 1400, Self::Aug => 3500,
+            Self::Elite => 800, Self::FiveSeven => 750, Self::Ump45 => 1700,
+            Self::Sg550 => 4200, Self::Galil => 2000, Self::Famas => 2250,
+            Self::Usp => 500, Self::Awp => 4750, Self::Mp5Navy => 1500,
+            Self::M249 => 5750, Self::M3 => 1700, Self::M4A1 => 3100,
+            Self::Tmp => 1250, Self::G3Sg1 => 5000, Self::Deagle => 650,
+            Self::Sg552 => 3500, Self::Ak47 => 2500, Self::P90 => 2350,
+        }
+    }
+
+    /// Damage retained per 500 world units, matching GoldSrc's range falloff
+    /// convention. The legacy presets intentionally keep no falloff.
+    pub const fn range_modifier(self) -> f32 {
+        match self {
+            Self::Pistol | Self::Smg | Self::Rifle => 1.0,
+            Self::Deagle => 0.81, Self::Elite | Self::Glock18 => 0.75,
+            Self::FiveSeven => 0.885, Self::P228 => 0.80, Self::Usp => 0.79,
+            Self::Mac10 => 0.82, Self::Tmp => 0.85, Self::Mp5Navy => 0.84,
+            Self::Ump45 => 0.82, Self::P90 => 0.885,
+            Self::Ak47 | Self::Scout => 0.98, Self::Awp => 0.99,
+            Self::M3 | Self::Xm1014 => 0.70,
+            _ => 0.96,
+        }
+    }
+
+    /// Fraction of normal damage retained after armor (GoldSrc's weapon
+    /// armor ratio multiplied by its global 0.5 armor ratio).
+    pub const fn armor_ratio(self) -> f32 {
+        match self {
+            Self::Awp => 0.4875, Self::Ak47 => 0.3875, Self::Deagle => 0.345,
+            Self::M4A1 => 0.35, Self::Aug | Self::Sg552 => 0.35,
+            Self::FiveSeven | Self::P90 => 0.375,
+            Self::G3Sg1 | Self::Sg550 | Self::Scout => 0.375,
+            Self::Pistol | Self::Smg | Self::Rifle => 1.0,
+            _ => 0.25,
+        }
+    }
+
+    pub fn config(self) -> WeaponConfig {
+        match self {
+            Self::Pistol => WeaponConfig {
+                mag_size: 12,
+                reserve: 36,
+                fire_interval: 0.22,
+                reload_time: 1.8,
+                damage_body: 24,
+                damage_head: 72,
+            },
+            Self::Smg => WeaponConfig {
+                mag_size: 30,
+                reserve: 90,
+                fire_interval: 0.085,
+                reload_time: 2.1,
+                damage_body: 22,
+                damage_head: 66,
+            },
+            Self::Rifle => WeaponConfig::default(),
+            Self::P228 => cfg(13, 52, 0.15, 2.7, 32),
+            Self::Glock18 => cfg(20, 120, 0.15, 2.2, 25),
+            Self::Scout => cfg(10, 90, 1.25, 2.0, 75),
+            Self::Xm1014 => cfg(7, 32, 0.25, 3.0, 20),
+            Self::Mac10 => cfg(30, 100, 0.075, 3.15, 29),
+            Self::Aug => cfg(30, 90, 0.0825, 3.3, 32),
+            Self::Elite => cfg(30, 120, 0.12, 4.5, 36),
+            Self::FiveSeven => cfg(20, 100, 0.15, 2.7, 20),
+            Self::Ump45 => cfg(25, 100, 0.105, 3.5, 30),
+            Self::Sg550 => cfg(30, 90, 0.25, 3.35, 40),
+            Self::Galil => cfg(35, 90, 0.0875, 2.45, 30),
+            Self::Famas => cfg(25, 90, 0.09, 3.3, 30),
+            Self::Usp => cfg(12, 100, 0.15, 2.7, 34),
+            Self::Awp => cfg(10, 30, 1.455, 2.5, 115),
+            Self::Mp5Navy => cfg(30, 120, 0.075, 2.63, 26),
+            Self::M249 => cfg(100, 200, 0.08, 4.7, 32),
+            Self::M3 => cfg(8, 32, 0.875, 0.5, 20),
+            Self::M4A1 => cfg(30, 90, 0.0875, 3.05, 33),
+            Self::Tmp => cfg(30, 120, 0.07, 2.12, 20),
+            Self::G3Sg1 => cfg(20, 90, 0.25, 4.7, 80),
+            Self::Deagle => cfg(7, 35, 0.225, 2.2, 54),
+            Self::Sg552 => cfg(30, 90, 0.0825, 3.0, 33),
+            Self::Ak47 => cfg(30, 90, 0.1, 2.45, 36),
+            Self::P90 => cfg(50, 100, 0.066, 3.4, 21),
+        }
+    }
+}
+
+/// Stable IDs shared by the native hosts and the PocketJS buy menu. The first
+/// five retain the original OpenStrike menu layout; additional firearms use
+/// IDs 5..26.
+pub const BUY_WEAPONS: &[(u8, WeaponKind)] = &[
+    (0, WeaponKind::Glock18), (1, WeaponKind::Mp5Navy), (2, WeaponKind::Ak47),
+    (5, WeaponKind::P228), (6, WeaponKind::Scout), (7, WeaponKind::Xm1014),
+    (8, WeaponKind::Mac10), (9, WeaponKind::Aug), (10, WeaponKind::Elite),
+    (11, WeaponKind::FiveSeven), (12, WeaponKind::Ump45), (13, WeaponKind::Sg550),
+    (14, WeaponKind::Galil), (15, WeaponKind::Famas), (16, WeaponKind::Usp),
+    (17, WeaponKind::Awp), (18, WeaponKind::M249), (19, WeaponKind::M3),
+    (20, WeaponKind::M4A1), (21, WeaponKind::Tmp), (22, WeaponKind::G3Sg1),
+    (23, WeaponKind::Deagle), (24, WeaponKind::Sg552), (25, WeaponKind::P90),
+];
+
+pub fn buy_weapon(id: u8) -> Option<WeaponKind> {
+    BUY_WEAPONS.iter().find(|(item, _)| *item == id).map(|(_, kind)| *kind)
+}
+
+const fn cfg(mag_size: u32, reserve: u32, fire_interval: f32, reload_time: f32, damage: i32) -> WeaponConfig {
+    WeaponConfig { mag_size, reserve, fire_interval, reload_time, damage_body: damage, damage_head: damage * 4 }
+}
+
 /// Weapon tuning — owned by the `strike` surface (mods set it through
 /// `strike.configureWeapon`). Defaults are the base game's rifle.
 #[derive(Clone, Debug)]
@@ -34,6 +227,7 @@ impl Default for WeaponConfig {
 }
 
 pub struct Weapon {
+    pub kind: WeaponKind,
     pub cfg: WeaponConfig,
     pub ammo: u32,
     pub reserve: u32,
@@ -48,13 +242,20 @@ pub struct Weapon {
 
 impl Default for Weapon {
     fn default() -> Self {
-        Self::with_config(WeaponConfig::default())
+        Self::with_kind(WeaponKind::Rifle)
     }
 }
 
 impl Weapon {
+    pub fn with_kind(kind: WeaponKind) -> Self {
+        let mut weapon = Self::with_config(kind.config());
+        weapon.kind = kind;
+        weapon
+    }
+
     pub fn with_config(cfg: WeaponConfig) -> Self {
         Self {
+            kind: WeaponKind::Rifle,
             ammo: cfg.mag_size,
             reserve: cfg.reserve,
             cfg,
@@ -107,7 +308,12 @@ impl Weapon {
 
     /// Fresh magazine under the current config (round reset).
     pub fn reset(&mut self) {
-        *self = Self::with_config(self.cfg.clone());
+        let kind = self.kind;
+        *self = Self::with_kind(kind);
+    }
+
+    pub fn equip(&mut self, kind: WeaponKind) {
+        *self = Self::with_kind(kind);
     }
 }
 
@@ -280,7 +486,20 @@ impl Rng {
 
 #[cfg(test)]
 mod tests {
-    use super::Weapon;
+    use super::{buy_weapon, Weapon, WeaponKind, BUY_WEAPONS};
+
+    #[test]
+    fn cs16_catalog_has_stable_buy_ids_and_core_timing() {
+        assert_eq!(BUY_WEAPONS.len(), 24);
+        assert_eq!(buy_weapon(0), Some(WeaponKind::Glock18));
+        assert_eq!(buy_weapon(2), Some(WeaponKind::Ak47));
+        assert_eq!(WeaponKind::Ak47.price(), 2500);
+        assert_eq!(WeaponKind::Ak47.config().damage_body, 36);
+        assert!((WeaponKind::Ak47.config().fire_interval - 0.1).abs() < f32::EPSILON);
+        assert_eq!(WeaponKind::Awp.config().damage_body, 115);
+        assert_eq!(WeaponKind::M249.config().mag_size, 100);
+        assert_eq!(WeaponKind::P90.config().mag_size, 50);
+    }
 
     #[test]
     fn held_reload_request_refills_once_without_spending_extra_reserve() {

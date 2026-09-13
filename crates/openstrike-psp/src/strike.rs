@@ -193,6 +193,19 @@ unsafe extern "C" fn js_set_bot_count(
     JS_UNDEFINED
 }
 
+unsafe extern "C" fn js_buy(
+    ctx: *mut JSContext,
+    _this: JSValue,
+    argc: i32,
+    argv: *mut JSValue,
+) -> JSValue {
+    let item = arg_i32(ctx, argc, argv, -1);
+    if (0..=4).contains(&item) {
+        COMMANDS.push(Command::Buy(item as u8));
+    }
+    JS_UNDEFINED
+}
+
 unsafe extern "C" fn js_configure_weapon(
     ctx: *mut JSContext,
     _this: JSValue,
@@ -246,6 +259,7 @@ pub unsafe fn register(
     add_fn(ctx, obj, b"addWin\0", js_add_win, 0);
     add_fn(ctx, obj, b"addLoss\0", js_add_loss, 0);
     add_fn(ctx, obj, b"setBotCount\0", js_set_bot_count, 1);
+    add_fn(ctx, obj, b"buy\0", js_buy, 1);
     add_fn(ctx, obj, b"configureWeapon\0", js_configure_weapon, 1);
     add_fn(ctx, obj, b"configureBots\0", js_configure_bots, 1);
     add_fn(ctx, obj, b"loadMap\0", js_load_map, 1);
@@ -277,6 +291,10 @@ unsafe fn build_state(ctx: *mut JSContext, sim: &StrikeSim) -> JSValue {
     set_val(ctx, o, b"wins\0", JS_NewInt32(ctx, sim.score.wins as i32));
     set_val(ctx, o, b"losses\0", JS_NewInt32(ctx, sim.score.losses as i32));
     set_val(ctx, o, b"speed\0", JS_NewFloat64(ctx, sim.ground_speed() as f64));
+    set_val(ctx, o, b"money\0", JS_NewInt32(ctx, sim.money));
+    set_val(ctx, o, b"armor\0", JS_NewInt32(ctx, sim.armor));
+    set_val(ctx, o, b"crouched\0", JS_NewBool(ctx, sim.player.crouched));
+    set_str(ctx, o, b"weapon\0", sim.weapon.kind.name());
     o
 }
 
@@ -331,6 +349,10 @@ pub unsafe fn dispatch_menu(ctx: *mut JSContext, global: JSValue, time: f64) -> 
         set_val(ctx, o, b"wins\0", JS_NewInt32(ctx, 0));
         set_val(ctx, o, b"losses\0", JS_NewInt32(ctx, 0));
         set_val(ctx, o, b"speed\0", JS_NewFloat64(ctx, 0.0));
+        set_val(ctx, o, b"money\0", JS_NewInt32(ctx, 800));
+        set_val(ctx, o, b"armor\0", JS_NewInt32(ctx, 0));
+        set_val(ctx, o, b"crouched\0", JS_NewBool(ctx, false));
+        set_str(ctx, o, b"weapon\0", "PISTOL");
         let batch = JS_NewArray(ctx);
         let mut args = [o, batch];
         let r = JS_Call(ctx, dispatch, strike, 2, args.as_mut_ptr());

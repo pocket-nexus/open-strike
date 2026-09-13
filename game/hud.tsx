@@ -21,7 +21,7 @@
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { Text, View } from "@pocketjs/framework/components";
 import * as hot from "@pocketjs/framework/hot";
-import { pushFocusScope } from "@pocketjs/framework/input";
+import { BTN, pushFocusScope } from "@pocketjs/framework/input";
 import { onButtonPress, onFrame } from "@pocketjs/framework/lifecycle";
 import { platform } from "@pocketjs/framework/platform";
 import { strike, type StrikeState } from "./sdk.ts";
@@ -70,6 +70,27 @@ export default function Hud() {
   const [losses, setLosses] = createSignal(s0.losses);
   const [reserve, setReserve] = createSignal(s0.reserve);
   const [countdown, setCountdown] = createSignal(0);
+  const [money, setMoney] = createSignal(s0.money);
+  const [armor, setArmor] = createSignal(s0.armor);
+  const [weapon, setWeapon] = createSignal(s0.weapon);
+  const [buyOpen, setBuyOpen] = createSignal(false);
+  const [buyIndex, setBuyIndex] = createSignal(0);
+  const buy = () => strike.buy(buyIndex());
+  onButtonPress(BTN.RIGHT, () => {
+    if (strike.state().phase !== "starting") return;
+    if (buyOpen()) buy();
+    else setBuyOpen(true);
+  });
+  onButtonPress(BTN.LEFT, () => setBuyOpen(false));
+  onButtonPress(BTN.UP, () => {
+    if (buyOpen()) setBuyIndex((i) => (i + BUY_ITEMS.length - 1) % BUY_ITEMS.length);
+  });
+  onButtonPress(BTN.DOWN, () => {
+    if (buyOpen()) setBuyIndex((i) => (i + 1) % BUY_ITEMS.length);
+  });
+  onButtonPress(BTN.CIRCLE, () => {
+    if (buyOpen()) buy();
+  });
   // SELECT opens/closes the quit dialog (BTN.SELECT = 0x0001). The mount is
   // structural but user-initiated — never on the combat hot path.
   const [dialog, setDialog] = createSignal(false);
@@ -131,6 +152,9 @@ export default function Hud() {
   let lWins = -1;
   let lLosses = -1;
   let lReserve = -1;
+  let lMoney = -1;
+  let lArmor = -1;
+  let lWeapon = "";
   let lCount = -1;
   let lReloading = false;
   let lAlive = true;
@@ -168,6 +192,19 @@ export default function Hud() {
       lReserve = s.reserve;
       setReserve(s.reserve);
     }
+    if (s.money !== lMoney) {
+      lMoney = s.money;
+      setMoney(s.money);
+    }
+    if (s.armor !== lArmor) {
+      lArmor = s.armor;
+      setArmor(s.armor);
+    }
+    if (s.weapon !== lWeapon) {
+      lWeapon = s.weapon;
+      setWeapon(s.weapon);
+    }
+    if (s.phase !== "starting" && buyOpen()) setBuyOpen(false);
 
     // Hot values: imperative, change-guarded, zero-layout.
     const hp = s.hp > 0 ? s.hp : 0;
@@ -503,6 +540,72 @@ export default function Hud() {
           }}
         />
       </Show>
+      <Show when={buyOpen()}>
+        <BuyDialog index={buyIndex()} money={money()} armor={armor()} weapon={weapon()} />
+      </Show>
+    </View>
+  );
+}
+
+const BUY_ITEMS = [
+  ["GLOCK 18", 400],
+  ["MP5 NAVY", 1500],
+  ["AK-47", 2500],
+  ["ARMOR", 650],
+  ["AMMUNITION", 300],
+  ["P228", 600],
+  ["SCOUT", 2750],
+  ["XM1014", 3000],
+  ["MAC-10", 1400],
+  ["AUG", 3500],
+  ["DUAL ELITES", 800],
+  ["FIVE-SEVEN", 750],
+  ["UMP45", 1700],
+  ["SG-550", 4200],
+  ["GALIL", 2000],
+  ["FAMAS", 2250],
+  ["USP", 500],
+  ["AWP", 4750],
+  ["M249", 5750],
+  ["M3", 1700],
+  ["M4A1", 3100],
+  ["TMP", 1250],
+  ["G3SG1", 5000],
+  ["DESERT EAGLE", 650],
+  ["SG-552", 3500],
+  ["P90", 2350],
+] as const;
+
+function BuyDialog(props: { index: number; money: number; armor: number; weapon: string }) {
+  return (
+    <View class="absolute inset-0 justify-center items-center" style={{ bgColor: "#02040770", zIndex: 35 }}>
+      <View class="flex-col gap-1 px-4 py-3 rounded-md" style={{ bgColor: "#081018F4", width: 210 * S }}>
+        <View class="flex-row justify-between">
+          <Text class="text-sm font-bold tracking-wide" style={{ textColor: LIME }}>BUY EQUIPMENT</Text>
+          <Text class="text-sm font-bold" style={{ textColor: AMBER }}>{"$" + props.money}</Text>
+        </View>
+        {BUY_ITEMS.map((item, i) => (
+          <Show when={Math.abs(i - props.index) <= 2}>
+            <View
+              class="flex-row justify-between px-2 py-1 rounded-sm"
+              style={{ bgColor: i === props.index ? "#33470f" : "#111a24" }}
+            >
+              <Text class="text-xs font-bold" style={{ textColor: i === props.index ? LIME : INK }}>
+                {item[0]}
+              </Text>
+              <Text class="text-xs" style={{ textColor: props.money >= item[1] ? AMBER : RED }}>
+                {"$" + item[1]}
+              </Text>
+            </View>
+          </Show>
+        ))}
+        <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+          {"EQUIPPED " + props.weapon + " · ARMOR " + props.armor}
+        </Text>
+        <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+          ↑↓ CHOOSE · →/○ BUY · ← CLOSE
+        </Text>
+      </View>
     </View>
   );
 }

@@ -9,7 +9,9 @@ use pocket3d_bsp::trace::{Hull, MapCollision};
 use pocket3d_bsp::types::SpawnPoint;
 
 use crate::bot::{Bot, BotConfig};
-use crate::weapon::{EffectKind, Effects, MUZZLE_LOCAL, RANGE, Rng, Weapon, WeaponConfig};
+use crate::weapon::{
+    EffectKind, Effects, MUZZLE_LOCAL, RANGE, Rng, Weapon, WeaponConfig, WeaponKind, buy_weapon,
+};
 use crate::{sin_cos, sinf, sqrtf};
 
 pub const MOUSE_SENS: f32 = 0.002;
@@ -24,6 +26,7 @@ pub struct Player {
     pub params: MoveParams,
     pub health: i32,
     pub alive: bool,
+    pub crouched: bool,
 }
 
 impl Player {
@@ -36,15 +39,23 @@ impl Player {
             params: MoveParams::default(),
             health: 100,
             alive: true,
+            crouched: false,
         }
     }
 
     pub fn eye_interpolated(&self, alpha: f32) -> Vec3 {
-        self.prev_pos.lerp(self.state.pos, alpha) + Vec3::Y * self.params.eye_height
+        self.prev_pos.lerp(self.state.pos, alpha)
+            + Vec3::Y * if self.crouched { 10.0 } else { self.params.eye_height }
     }
 
     pub fn eye(&self) -> Vec3 {
-        self.state.pos + Vec3::Y * self.params.eye_height
+        self.state.pos
+            + Vec3::Y
+                * if self.crouched {
+                    10.0
+                } else {
+                    self.params.eye_height
+                }
     }
 
     pub fn forward_flat(&self) -> Vec3 {
@@ -103,6 +114,7 @@ pub enum Command {
     SetBotCount(usize),
     ConfigureWeapon(WeaponConfig),
     ConfigureBots(BotConfig),
+    Buy(u8),
 }
 
 #[derive(Default, Clone, Copy)]
@@ -121,6 +133,7 @@ pub struct SimInput {
     pub move_y: f32,
     pub walk: bool,
     pub jump: bool,
+    pub crouch: bool,
     /// Trigger held.
     pub fire: bool,
     /// Reload requested this tick; platforms may map either an edge or a held
@@ -145,6 +158,11 @@ pub struct StrikeSim {
     pub time: f32,
     pub fly_mode: bool,
     pub fired_this_tick: bool,
+    pub money: i32,
+    pub armor: i32,
+    pub bot_money: i32,
+    pub loss_streak: u8,
+    pub bot_loss_streak: u8,
 
     spawn_point: (Vec3, f32),
     bot_spawns: Vec<SpawnPoint>,
@@ -165,7 +183,7 @@ impl StrikeSim {
             player: Player::spawn(spawn_pos, spawn_yaw),
             bots: Vec::new(),
             bot_count,
-            weapon: Weapon::default(),
+            weapon: Weapon::with_kind(WeaponKind::Glock18),
             effects: Effects::default(),
             rng: Rng(0x0DDB1A5E5BAD5EED),
             phase: Phase::Starting,
@@ -175,6 +193,11 @@ impl StrikeSim {
             time: 0.0,
             fly_mode: false,
             fired_this_tick: false,
+            money: 800,
+            armor: 0,
+            bot_money: 800,
+            loss_streak: 0,
+            bot_loss_streak: 0,
             spawn_point: (spawn_pos, spawn_yaw),
             bot_spawns,
             bob_time: 0.0,
@@ -194,6 +217,7 @@ impl StrikeSim {
             // Spread bots over the spawn list.
             let sp = self.bot_spawns[(i * 3 + 1) % self.bot_spawns.len()];
             let mut bot = Bot::spawn(sp.pos, sp.yaw);
+            bot.buy_for_budget(self.bot_money);
             bot.anim.clip = walk_clip;
             self.bots.push(bot);
         }
@@ -204,7 +228,8 @@ impl StrikeSim {
         let pitch = self.player.pitch;
         self.player = Player::spawn(pos, yaw);
         self.player.pitch = pitch * 0.25;
-        self.weapon.reset();
+        self.weapon = Weapon::with_kind(WeaponKind::Glock18);
+        self.armor = 0;
         self.effects.clear();
         self.spawn_bots(walk_clip);
         self.phase = Phase::Starting;
@@ -216,8 +241,20 @@ impl StrikeSim {
         match cmd {
             Command::SetPhase(p) => self.phase = p,
             Command::ResetRound => self.reset_round(walk_clip),
-            Command::AddWin => self.score.wins += 1,
-            Command::AddLoss => self.score.losses += 1,
+            Command::AddWin => {
+                self.score.wins += 1;
+                self.money = (self.money + 3250).min(16_000);
+                self.loss_streak = 0;
+                self.bot_loss_streak = self.bot_loss_streak.saturating_add(1).min(5);
+                self.bot_money = (self.bot_money + loss_bonus(self.bot_loss_streak)).min(16_000);
+            }
+            Command::AddLoss => {
+                self.score.losses += 1;
+                self.bot_loss_streak = 0;
+                self.loss_streak = self.loss_streak.saturating_add(1).min(5);
+                self.money = (self.money + loss_bonus(self.loss_streak)).min(16_000);
+                self.bot_money = (self.bot_money + 3250).min(16_000);
+            }
             Command::SetBotCount(n) => self.bot_count = n.min(16),
             Command::ConfigureWeapon(cfg) => {
                 self.weapon.cfg = cfg;
@@ -227,6 +264,36 @@ impl StrikeSim {
             Command::ConfigureBots(cfg) => {
                 self.bot_count = cfg.count.min(16);
                 self.bot_cfg = cfg;
+            }
+            Command::Buy(item) => self.buy(item),
+        }
+    }
+
+    /// Freeze-time shop. IDs match the tiny cross-platform buy menu.
+    pub fn buy(&mut self, item: u8) {
+        if self.phase != Phase::Starting || !self.player.alive {
+            return;
+        }
+        let weapon = buy_weapon(item);
+        let (price, weapon) = match item {
+            3 if self.armor < 100 => (650, None),
+            4 if self.weapon.reserve < self.weapon.cfg.reserve => (300, None),
+            _ => match weapon {
+                Some(kind) => (kind.price(), Some(kind)),
+                None => return,
+            },
+        };
+        if self.money < price {
+            return;
+        }
+        self.money -= price;
+        match item {
+            3 => self.armor = 100,
+            4 => self.weapon.reserve = self.weapon.cfg.reserve,
+            _ => {
+                if let Some(kind) = weapon {
+                    self.weapon.equip(kind);
+                }
             }
         }
     }
@@ -304,6 +371,11 @@ impl StrikeSim {
             }
         }
         if incoming > 0 && self.player.alive {
+            if self.armor > 0 {
+                let absorbed = (incoming / 2).min(self.armor);
+                self.armor -= absorbed;
+                incoming -= absorbed;
+            }
             self.player.health -= incoming;
             if self.player.health <= 0 {
                 self.player.health = 0;
@@ -362,12 +434,35 @@ impl StrikeSim {
             return;
         }
 
+        // Hull centers differ: preserve foot position when ducking/standing.
+        if input.crouch && !p.crouched {
+            p.state.pos.y -= 18.0;
+            p.crouched = true;
+        } else if !input.crouch && p.crouched {
+            let stand_pos = p.state.pos + Vec3::Y * 18.0;
+            let tr = col.trace(Hull::Stand, stand_pos, stand_pos);
+            if !tr.start_solid {
+                p.state.pos = stand_pos;
+                p.crouched = false;
+            }
+        }
         let minput = MoveInput {
             wish_dir: wish,
-            speed: if input.walk { WALK_SPEED_SCALE } else { 1.0 },
+            speed: if p.crouched {
+                0.36
+            } else if input.walk {
+                WALK_SPEED_SCALE
+            } else {
+                1.0
+            },
             jump: !frozen && input.jump,
         };
-        step_character(col, HullKind::Stand, &mut p.state, &p.params, &minput, dt);
+        let hull = if p.crouched {
+            HullKind::Crouch
+        } else {
+            HullKind::Stand
+        };
+        step_character(col, hull, &mut p.state, &p.params, &minput, dt);
 
         // Weapon bob clock follows ground speed. Keep the previous value so
         // the viewmodel can interpolate between ticks like the camera does.
@@ -430,12 +525,19 @@ impl StrikeSim {
         if let Some(i) = hit_bot {
             let bot = &mut self.bots[i];
             let headshot = hit_point.y > bot.state.pos.y + 22.0;
-            let dmg = if headshot {
+            let base_damage = if headshot {
                 self.weapon.cfg.damage_head
             } else {
                 self.weapon.cfg.damage_body
             };
-            let died = bot.hurt(dmg);
+            let dmg = libm::roundf(
+                (base_damage as f32)
+                    * libm::powf(self.weapon.kind.range_modifier(), best_t / 500.0),
+            ) as i32;
+            let died = bot.hurt_with_armor(dmg, self.weapon.kind.armor_ratio());
+            if died {
+                self.money = (self.money + 300).min(16_000);
+            }
             self.effects
                 .spawn(EffectKind::BloodPuff { pos: hit_point }, 0.22);
             self.events.push(GameEvent::Hit {
@@ -490,6 +592,10 @@ impl StrikeSim {
     }
 }
 
+fn loss_bonus(streak: u8) -> i32 {
+    1400 + 500 * i32::from(streak.saturating_sub(1).min(4))
+}
+
 /// Slab-method ray/AABB intersection; returns distance along `dir`.
 pub fn ray_aabb(origin: Vec3, dir: Vec3, min: Vec3, max: Vec3) -> Option<f32> {
     let inv = dir.recip();
@@ -503,5 +609,56 @@ pub fn ray_aabb(origin: Vec3, dir: Vec3, min: Vec3, max: Vec3) -> Option<f32> {
         Some(enter.max(0.0))
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sim() -> StrikeSim {
+        StrikeSim::new(Vec3::ZERO, 0.0, Vec::new(), 0)
+    }
+
+    #[test]
+    fn purchases_are_freeze_time_only_and_charge_once() {
+        let mut sim = sim();
+        assert_eq!(sim.money, 800);
+        assert_eq!(sim.weapon.kind, WeaponKind::Glock18);
+        sim.buy(3);
+        assert_eq!((sim.money, sim.armor), (150, 100));
+        sim.buy(3);
+        assert_eq!(sim.money, 150);
+        sim.phase = Phase::Live;
+        sim.money = 3000;
+        sim.buy(2);
+        assert_eq!(sim.weapon.kind, WeaponKind::Glock18);
+        assert_eq!(sim.money, 3000);
+    }
+
+    #[test]
+    fn rewards_cap_and_round_reset_restores_sidearm() {
+        let mut sim = sim();
+        sim.money = 15_900;
+        sim.apply(Command::AddWin, 0);
+        assert_eq!(sim.money, 16_000);
+        sim.phase = Phase::Starting;
+        sim.buy(2);
+        assert_eq!(sim.weapon.kind, WeaponKind::Ak47);
+        sim.reset_round(0);
+        assert_eq!(sim.weapon.kind, WeaponKind::Glock18);
+        assert_eq!(sim.armor, 0);
+    }
+
+    #[test]
+    fn consecutive_losses_ramp_to_the_cs16_cap() {
+        let mut sim = sim();
+        sim.money = 0;
+        for expected in [1400, 3300, 5700, 8600, 12_000, 15_400] {
+            sim.apply(Command::AddLoss, 0);
+            assert_eq!(sim.money, expected);
+        }
+        sim.apply(Command::AddWin, 0);
+        assert_eq!(sim.loss_streak, 0);
     }
 }

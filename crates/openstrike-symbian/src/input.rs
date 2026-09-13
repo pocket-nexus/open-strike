@@ -50,6 +50,7 @@ impl KeyboardInput {
                 move_y,
                 walk: keys & KEY_WALK != 0,
                 jump: keys & KEY_JUMP != 0,
+                crouch: false,
                 fire: keys & KEY_FIRE != 0 || buttons & (btn::CIRCLE | btn::RTRIGGER) != 0,
                 // Keep the request alive across both 60 Hz ticks in a 30 Hz
                 // host frame. Weapon::trigger_reload is idempotent while a

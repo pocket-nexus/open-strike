@@ -146,3 +146,7 @@ pub unsafe fn draw_viewmodel(pool: &mut FramePool, rifle: &[ColorVert], sim: &St
     clear_depth_for_viewmodel();
     draw_color_tris(pool, rifle, sim.viewmodel_transform_at(1.0));
 }
+
+pub unsafe fn clear_viewmodel_depth() {
+    clear_depth_for_viewmodel();
+}

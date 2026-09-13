@@ -1,6 +1,6 @@
 [submodule "vendor/pocketjs"]
 	path = vendor/pocketjs
-	url = https://github.com/pocket-stack/pocketjs.git
+	url = https://github.com/psplumberdev/pocketjs.git
 	branch = main
 [submodule "vendor/rust-psp"]
 	path = vendor/rust-psp
