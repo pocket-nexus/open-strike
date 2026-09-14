@@ -16,8 +16,8 @@
 
 <p align="center"><em>A CS-like FPS on classic BSP maps — Pocket3D worlds, a PocketJS JSX HUD, gameplay in TypeScript.<br/>
 The full 3D game targets desktop (wgpu), PSP (sceGu), PS Vita
-(vita2d/GXM), and Nokia E7 (OpenGL ES 2). The bottom shot is the real PSP
-running at a locked 60 fps.</em></p>
+(vita2d/GXM), and Nokia E7 (OpenGL ES 2). The bottom shot was captured
+on a real PSP.</em></p>
 
 A single-player CS-like FPS built on the **Pocket runtime family**: a Rust
 core (Pocket3D) simulates and renders; the *product* — round rules, weapon
@@ -104,6 +104,13 @@ bun run check:platforms
 bun run build:ui   # resolve PSP -> dist/pocket/psp/openstrike.{js,pak}
 bun scripts/build-ui.ts --target vita
 ```
+
+If only previously cooked PSP maps are available, use
+`bun scripts/psp.ts --cooked-maps dist/maps --bench`. The pinned Pocket3D
+reader verifies every supplied `.p3d` before staging that map set beside the
+EBOOT. The default build still cooks from the BSP/WAD source directory.
+`OPENSTRIKE_COOKED_MAPS=dist/maps` selects the same input for
+`bun scripts/e2e-psp.ts` and `bun scripts/hw.ts`.
 
 PSP builds resolve the normalized SDK in a fixed order: `PSP_SDK`, then
 `PSPDEV`, then Pocket's versioned shared cache at
@@ -237,6 +244,21 @@ Round rules (v0.1, see `game/rules.ts`): eliminate every bot to win; die and
 you lose. Either way the round resets automatically and the score carries
 over.
 
+## Police character
+
+The current bot is an original Blender patrol officer with Idle, Walk, Run,
+Fire, Reload, Hit and Death actions. Desktop uses its skinned GLB; PSP, Vita
+and E7 share a quantized animation bake. The PSP blends baked frames on the
+GE, with one indexed draw per visible officer (1,390 triangles), under 512 KiB
+of asset data and a shared 1.88 MiB pose cache.
+The [editable source, preview and validation workflow](assets/characters/police/README.md)
+include a map-independent desktop character preview and PSP capture suite.
+The [physical PSP report](docs/PSP_CHARACTER_ACCEPTANCE.md) records two
+1/3/6-actor sweeps and gameplay within an 18 MiB heap cap. Six actors average
+58.9 fps in the animation sweep. Manual play subsequently exposed combat
+stalls; the [combat investigation](docs/PSP_COMBAT_PERFORMANCE.md) separates
+those results from full fighting and records the fixes and remaining limits.
+
 ## Headless verification
 
 Every acceptance criterion runs without a window — the renderer draws
@@ -295,10 +317,10 @@ Controls: analog stick moves, `△/✕/□/○` looks, `R` fires, `L` jumps, d-p
 down reloads, d-pad up walks, **SELECT** opens the return-to-menu dialog. In
 the menu, d-pad selects a map and `○` deploys.
 
-Measured on hardware (333 MHz, `--bench`, scripted dust2 tour): a locked
-60 fps, GE under 30 µs — and combat is flat too (no per-shot hitch: the HUD
-updates through the framework's imperative hot path, avoiding a reactive
-flush per frame). Cooking bakes lightmaps into vertex colors, keeps WAD
+Current hardware measurements are in the [combat report](docs/PSP_COMBAT_PERFORMANCE.md).
+The HUD uses fixed text cells, batched paint updates and native effect fades;
+the PSP presentation loop preserves refresh opportunities when a completed
+frame arrives during a new blanking interval. Cooking bakes lightmaps into vertex colors, keeps WAD
 textures as swizzled CLUT8 with full mip chains, and ships PVS so the renderer
 draws only the visible leaves; each `.p3d` is consumed zero-copy, and maps
 load on demand from `maps/` next to the EBOOT into one reused buffer.

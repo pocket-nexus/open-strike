@@ -3,6 +3,7 @@
 //   bun scripts/psp.ts                     # de_dust2, debug profile
 //   bun scripts/psp.ts -r                  # release
 //   bun scripts/psp.ts --map de_inferno --bots 4
+//   bun scripts/psp.ts --cooked-maps dist/maps --bench
 //   OPENSTRIKE_MAPS=~/cs bun scripts/psp.ts
 //
 // Maps root (maps/*.bsp + support/*.wad) comes from OPENSTRIKE_MAPS or the
@@ -11,6 +12,7 @@
 
 import { $ } from "bun";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { resolve } from "node:path";
 import { resolvePspBuildToolchain } from "../vendor/pocketjs/tools/psp-toolchain.ts";
 import { compilePocketTarget, nativePocketContract } from "./pocket-contract.ts";
 
@@ -24,15 +26,25 @@ function flag(name: string, def: string): string {
   return i !== -1 && argv[i + 1] ? argv[i + 1] : def;
 }
 const mapName = flag("map", "de_dust2");
+const cookedInput = argv.includes("--cooked-maps") ? flag("cooked-maps", "") : process.env.OPENSTRIKE_COOKED_MAPS;
+if (cookedInput !== undefined && (!cookedInput || cookedInput.startsWith("-"))) {
+  throw new Error("--cooked-maps needs a directory");
+}
+const cookedMaps = cookedInput === undefined ? undefined : resolve(cookedInput);
 const release = argv.includes("-r") || argv.includes("--release");
 const skipMaps = argv.includes("--skip-maps");
 const skipWeapons = argv.includes("--skip-weapons");
 const features: string[] = [];
 if (argv.includes("--capture")) features.push("capture");
 if (argv.includes("--bench")) features.push("bench");
+if (argv.includes("--character-bench")) features.push("character-bench");
+if (argv.includes("--combat-bench")) features.push("combat-bench");
 
 const mapsRoot = process.env.OPENSTRIKE_MAPS ?? `${home}/Downloads/cs-maps-20260705-1836`;
-if (!skipMaps && !existsSync(`${mapsRoot}/maps`)) {
+if (cookedMaps !== undefined && (!cookedMaps || !existsSync(cookedMaps))) {
+  throw new Error("--cooked-maps needs an existing directory of .p3d maps");
+}
+if (!skipMaps && cookedMaps === undefined && !existsSync(`${mapsRoot}/maps`)) {
   console.error(`no maps dir at ${mapsRoot}/maps (set OPENSTRIKE_MAPS)`);
   process.exit(1);
 }
@@ -45,7 +57,7 @@ const pocketPlan = await compilePocketTarget("psp");
 // 32-unit light grid: samples every other GoldSrc luxel — crisp baked
 // shadows for ~0.9 MB more map (GE headroom is huge, this is cheap).
 mkdirSync(`${repo}dist/maps`, { recursive: true });
-if (!skipMaps) {
+if (!skipMaps && cookedMaps === undefined) {
   const bsps = readdirSync(`${mapsRoot}/maps`)
     .filter((f) => f.endsWith(".bsp"))
     .sort();
@@ -72,6 +84,19 @@ if (!skipWeapons && existsSync(`${weaponModels}/v_ak47.mdl`)) {
   await $`bun ${repo}scripts/cook-weapons.ts ${weaponModels} ${repo}dist/weapons`;
 } else if (!existsSync(`${repo}dist/weapons`)) {
   console.log("openstrike-psp: no weapon models found (set OPENSTRIKE_MAPS to cstrike root)");
+}
+
+// Existing user-supplied maps are valid inputs only after the pinned engine
+// accepts them. Keep the selected directory intact; stage exactly this set.
+const mapDirectory = cookedMaps ?? `${repo}dist/maps`;
+const mapFiles = readdirSync(mapDirectory).filter((f) => f.endsWith(".p3d")).sort();
+if (!mapFiles.includes(`${mapName}.p3d`)) {
+  throw new Error(`selected map ${mapName}.p3d is missing from ${mapDirectory}`);
+}
+for (const f of mapFiles) {
+  await $`cargo run --release --locked -q -p pocket3d-cook -- --verify-cooked ${mapDirectory}/${f}`.cwd(
+    `${repo}vendor/pocketjs/engine/pocket3d`,
+  );
 }
 
 // ---- 3. cargo psp ---------------------------------------------------------
@@ -130,8 +155,11 @@ await $`${toolchain.rustup} run ${toolchain.manifest.rust.toolchain} cargo psp $
 const profile = release ? "release" : "debug";
 const ebootDir = `${pspDir}target/mipsel-sony-psp/${profile}`;
 mkdirSync(`${ebootDir}/maps`, { recursive: true });
-for (const f of readdirSync(`${repo}dist/maps`).filter((f) => f.endsWith(".p3d"))) {
-  cpSync(`${repo}dist/maps/${f}`, `${ebootDir}/maps/${f}`);
+for (const f of readdirSync(`${ebootDir}/maps`).filter((f) => f.endsWith(".p3d") && !mapFiles.includes(f))) {
+  rmSync(`${ebootDir}/maps/${f}`);
+}
+for (const f of mapFiles) {
+  cpSync(`${mapDirectory}/${f}`, `${ebootDir}/maps/${f}`);
 }
 const named = `${ebootDir}/openstrike-psp.EBOOT.PBP`;
 if (existsSync(named)) {
@@ -153,8 +181,8 @@ if (argv.includes("--package")) {
   mkdirSync(`${pkg}/maps`, { recursive: true });
   mkdirSync(`${pkg}/weapons`, { recursive: true });
   cpSync(`${ebootDir}/EBOOT.PBP`, `${pkg}/EBOOT.PBP`);
-  for (const f of readdirSync(`${repo}dist/maps`).filter((f) => f.endsWith(".p3d"))) {
-    cpSync(`${repo}dist/maps/${f}`, `${pkg}/maps/${f}`);
+  for (const f of mapFiles) {
+    cpSync(`${mapDirectory}/${f}`, `${pkg}/maps/${f}`);
   }
   if (existsSync(`${repo}dist/weapons`)) {
     for (const f of readdirSync(`${repo}dist/weapons`).filter((f) => f.endsWith(".pwm"))) {
