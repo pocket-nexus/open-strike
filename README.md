@@ -302,7 +302,9 @@ load on demand from `maps/` next to the EBOOT into one reused buffer.
 The PSP simulation follows elapsed time at **60 fixed ticks per second**,
 including one complete JavaScript rules/HUD turn per tick. Rendering can run
 at a lower rate without slowing movement, jumps or reloads. Catch-up is capped
-at four ticks per frame; map transitions reset the clock. The renderer culls
+at four ticks per frame; map transitions reset the clock. The host collects
+JavaScript cycles when arena growth exceeds 256 KiB after the last collection.
+The renderer culls
 individual faces, uses bounded optional triangle strips, and retains the
 original triangle lists when a cache entry cannot be built.
 

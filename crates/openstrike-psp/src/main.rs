@@ -211,6 +211,7 @@ unsafe fn run() {
     }
 
     // ---- Fixed simulation clock; presentation may skip display refreshes. ----
+    let mut last_gc_bump = 0usize;
     let mut clock = FixedClock::new(sys::sceKernelGetSystemTimeWide() as u64);
     #[cfg(feature = "bench")]
     let mut tick_count = 0u64;
@@ -324,6 +325,15 @@ unsafe fn run() {
             if host_cmd.is_some() {
                 break;
             }
+        }
+        // Match the PocketJS PSP host's arena-pressure cycle collection.
+        // Component unmounts release owners but can leave JS reference cycles.
+        // Collect outside guest turns only after fresh arena growth; ordinary
+        // frames reuse free-list blocks and do not run a collector.
+        let bump = pocketjs_psp::arena::stats().bump_bytes;
+        if bump > last_gc_bump.saturating_add(256 * 1024) {
+            JS_RunGC(rt);
+            last_gc_bump = pocketjs_psp::arena::stats().bump_bytes;
         }
         let ui = ffi::ui();
         let (words_ptr, words_len) = {
@@ -718,10 +728,12 @@ impl Bench {
         let n = self.frames as u64;
         self.window += 1;
         let arena = unsafe { pocketjs_psp::arena::stats() };
+        let (arena_free, _) = unsafe { pocketjs_psp::arena::debug_free() };
+        let js_live = unsafe { pocketjs_psp::qjs_alloc::stats().live_requested };
         self.work_times.sort_unstable();
         self.frame_times.sort_unstable();
         let line = alloc::format!(
-            "{{\"window\":{},\"frames\":{},\"sim_ticks\":{},\"map_loads\":{},\"menu_returns\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_indices\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"max_segs_us\":[{},{},{},{},{}],\"actor_probe\":{},\"avg_actor_us\":{},\"max_actor_us\":{},\"avg_actors\":{},\"max_actors\":{},\"actor_triangles_each\":{},\"observed_fps_milli\":{},\"p95_frame_us\":{},\"p99_frame_us\":{},\"p95_work_us\":{},\"late_frames\":{},\"input\":{{\"buttons_or\":{},\"analog_frames\":{},\"movement_frames\":{},\"airborne_frames\":{},\"look_frames\":{},\"ammo_min\":{},\"ammo_max\":{},\"reloading_frames\":{}}},\"actor_clip_frames\":[{},{},{},{},{},{},{}],\"combat_probe\":{},\"events\":{{\"hits\":{},\"kills\":{},\"damage\":{},\"deaths\":{},\"resets\":{},\"shots\":{}}},\"reused_vblanks\":{},\"missed_vblanks\":{},\"max_work_frame\":{}}}\n",
+            "{{\"window\":{},\"frames\":{},\"sim_ticks\":{},\"map_loads\":{},\"menu_returns\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_indices\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"arena_total_free_bytes\":{},\"js_live_requested_bytes\":{},\"max_segs_us\":[{},{},{},{},{}],\"actor_probe\":{},\"avg_actor_us\":{},\"max_actor_us\":{},\"avg_actors\":{},\"max_actors\":{},\"actor_triangles_each\":{},\"observed_fps_milli\":{},\"p95_frame_us\":{},\"p99_frame_us\":{},\"p95_work_us\":{},\"late_frames\":{},\"input\":{{\"buttons_or\":{},\"analog_frames\":{},\"movement_frames\":{},\"airborne_frames\":{},\"look_frames\":{},\"ammo_min\":{},\"ammo_max\":{},\"reloading_frames\":{}}},\"actor_clip_frames\":[{},{},{},{},{},{},{}],\"combat_probe\":{},\"events\":{{\"hits\":{},\"kills\":{},\"damage\":{},\"deaths\":{},\"resets\":{},\"shots\":{}}},\"reused_vblanks\":{},\"missed_vblanks\":{},\"max_work_frame\":{}}}\n",
             self.window,
             n,
             self.sim_ticks,
@@ -741,6 +753,8 @@ impl Bench {
             arena.capacity_bytes,
             arena.bump_bytes,
             arena.tail_free_bytes,
+            arena_free,
+            js_live,
             self.max_segs[0],
             self.max_segs[1],
             self.max_segs[2],
