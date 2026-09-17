@@ -4,9 +4,11 @@
 //
 //   bun scripts/e2e-psp.ts            # compare against test/goldens-psp
 //   UPDATE=1 bun scripts/e2e-psp.ts   # re-baseline
+//   PSP_E2E_CASE=muzzle bun scripts/e2e-psp.ts # fire, fade, and turn with the gun
 //
 // Requires PPSSPPHeadless (PPSSPP_HEADLESS env or ~/ppsspp-src/build) and
-// the CS maps (OPENSTRIKE_MAPS). Software renderer only — it is the only
+// the CS maps (OPENSTRIKE_MAPS) or cooked .p3d files (OPENSTRIKE_COOKED_MAPS).
+// Software renderer only — it is the only
 // deterministic backend; goldens are only promised for the PPSSPP commit in
 // test/goldens-psp/PPSSPP-COMMIT.txt.
 
@@ -59,7 +61,22 @@ const SPECS: Spec[] = [
     capN: 12,
     shots: [1, 8],
   },
+  {
+    // Capture the bright core, its fade, and another shot while turning.
+    // The first-person flame must stay at the barrel under changing camera yaw.
+    name: "muzzle",
+    input: `0:0,90:${R},93:${R | CIRCLE},120:0`,
+    capStart: 90,
+    capN: 30,
+    shots: [0, 2, 14],
+  },
 ];
+
+const selectedCase = process.env.PSP_E2E_CASE;
+const specs = selectedCase ? SPECS.filter((spec) => spec.name === selectedCase) : SPECS;
+if (specs.length === 0) {
+  throw new Error(`Unknown PSP_E2E_CASE: ${selectedCase}`);
+}
 
 const ppsspp = process.env.PPSSPP_HEADLESS ?? `${home}/ppsspp-src/build/PPSSPPHeadless`;
 if (!existsSync(ppsspp)) {
@@ -73,7 +90,7 @@ mkdirSync(outDir, { recursive: true });
 mkdirSync(goldens, { recursive: true });
 
 let failures = 0;
-for (const spec of SPECS) {
+for (const spec of specs) {
   console.log(`\n## ${spec.name} (input: ${spec.input})`);
   console.log("# build capture EBOOT ...");
   await $`bun scripts/psp.ts --capture`

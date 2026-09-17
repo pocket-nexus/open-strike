@@ -1,24 +1,27 @@
 //! GE presentation of the sim: baked officer animation, the rifle viewmodel,
-//! and additive effect billboards. The desktop equivalent is scene
+//! and feathered additive effects. The desktop equivalent is scene
 //! composition in crates/openstrike/src/game.rs — here the "scene" is GE
 //! commands recorded straight into the open display list.
 
 use alloc::vec::Vec;
 
 use glam::{Mat4, Vec3};
-use openstrike_core::weapon::{FxBeam, FxSprite, GUN_COLORS, rifle_boxes};
+use openstrike_core::muzzle;
+use openstrike_core::weapon::{
+    rifle_boxes, EffectKind, FxBeam, FxSprite, GUN_COLORS, MUZZLE_LOCAL,
+};
 use openstrike_core::{Bot, StrikeSim};
-use pocket3d_gu::mesh::{ColorVert, clear_depth_for_viewmodel, draw_color_tris};
+use pocket3d_gu::mesh::{clear_depth_for_viewmodel, draw_color_tris, ColorVert};
 use pocket3d_gu::{Camera3d, FramePool};
-use psp::sys::{self, BlendFactor, BlendOp, GuState};
+use psp::sys::{self, BlendFactor, BlendOp, GuState, ShadingModel};
 
 fn abgr(rgba: [u8; 4], brightness: f32) -> u32 {
     let c = |v: u8| ((v as f32 * brightness).clamp(0.0, 255.0)) as u32;
     0xff00_0000 | (c(rgba[2]) << 16) | (c(rgba[1]) << 8) | c(rgba[0])
 }
 
-fn abgr_f(color: [f32; 4], scale: f32) -> u32 {
-    let c = |v: f32| ((v * scale).clamp(0.0, 1.0) * 255.0) as u32;
+fn abgr_f(color: [f32; 4]) -> u32 {
+    let c = |v: f32| (v.clamp(0.0, 1.0) * 255.0) as u32;
     (c(color[3]) << 24) | (c(color[2]) << 16) | (c(color[1]) << 8) | c(color[0])
 }
 
@@ -219,50 +222,93 @@ impl OfficerRenderer {
     }
 }
 
-/// Additive billboards for effects (muzzle flashes, tracers, impacts).
-pub unsafe fn draw_effects(pool: &mut FramePool, sim: &StrikeSim, cam: &Camera3d) {
-    let mut sprites: Vec<FxSprite> = Vec::new();
-    let mut beams: Vec<FxBeam> = Vec::new();
-    sim.effects.emit(&mut sprites, &mut beams);
-    if sprites.is_empty() && beams.is_empty() {
+/// Retained CPU scratch; the frame pool owns each submitted GPU copy.
+pub struct EffectRenderer {
+    world: Vec<ColorVert>,
+    viewmodel: Vec<ColorVert>,
+    sprites: Vec<FxSprite>,
+    beams: Vec<FxBeam>,
+}
+
+fn effect_vertex(p: Vec3, color: [f32; 4]) -> ColorVert {
+    ColorVert {
+        color: abgr_f(color),
+        x: p.x,
+        y: p.y,
+        z: p.z,
+    }
+}
+
+impl EffectRenderer {
+    pub fn new() -> Self {
+        Self {
+            world: Vec::with_capacity(muzzle::MAX_VERTICES * 8),
+            viewmodel: Vec::with_capacity(muzzle::MAX_VERTICES),
+            sprites: Vec::with_capacity(32),
+            beams: Vec::with_capacity(32),
+        }
+    }
+
+    pub fn prepare(&mut self, sim: &StrikeSim, cam: &Camera3d) {
+        self.world.clear();
+        self.viewmodel.clear();
+        self.sprites.clear();
+        self.beams.clear();
+        let fwd = cam.forward();
+        let right = fwd.cross(Vec3::Y).normalize_or_zero();
+        let up = right.cross(fwd);
+        for effect in &sim.effects.list {
+            if let EffectKind::MuzzleFlash { pos } = effect.kind {
+                let out = if effect.viewmodel {
+                    &mut self.viewmodel
+                } else {
+                    &mut self.world
+                };
+                muzzle::emit(effect.age, effect.ttl, effect.variant, |v| {
+                    let p = if effect.viewmodel {
+                        MUZZLE_LOCAL + v.position
+                    } else {
+                        pos + right * v.position.x + up * v.position.y - fwd * v.position.z
+                    };
+                    out.push(effect_vertex(p, v.color));
+                });
+            } else {
+                effect.emit(&mut self.sprites, &mut self.beams);
+            }
+        }
+        let mut quad = |a: Vec3, b: Vec3, c: Vec3, d: Vec3, color: [f32; 4]| {
+            for p in [a, b, c, a, c, d] {
+                self.world.push(effect_vertex(p, color));
+            }
+        };
+        for s in &self.sprites {
+            let r = right * (s.size * 0.5);
+            let u = up * (s.size * 0.5);
+            quad(
+                s.pos - r - u,
+                s.pos + r - u,
+                s.pos + r + u,
+                s.pos - r + u,
+                s.color,
+            );
+        }
+        for b in &self.beams {
+            let side = (b.b - b.a).cross(fwd).normalize_or_zero() * (b.width * 0.5);
+            quad(b.a - side, b.b - side, b.b + side, b.a + side, b.color);
+        }
+    }
+
+    pub unsafe fn draw_world(&self, pool: &mut FramePool) {
+        draw_additive(pool, &self.world, Mat4::IDENTITY);
+    }
+}
+
+unsafe fn draw_additive(pool: &mut FramePool, verts: &[ColorVert], model: Mat4) {
+    if verts.is_empty() {
         return;
     }
-
-    let fwd = cam.forward();
-    let right = fwd.cross(Vec3::Y).normalize_or_zero();
-    let up = right.cross(fwd);
-
-    let mut verts: Vec<ColorVert> = Vec::new();
-    let mut quad = |a: Vec3, b: Vec3, c: Vec3, d: Vec3, color: u32| {
-        let v = |p: Vec3| ColorVert {
-            color,
-            x: p.x,
-            y: p.y,
-            z: p.z,
-        };
-        verts.extend_from_slice(&[v(a), v(b), v(c), v(a), v(c), v(d)]);
-    };
-    for s in &sprites {
-        // Additive: bake alpha into the color (dst weight is fixed 1).
-        let color = abgr_f(s.color, s.color[3]);
-        let r = right * (s.size * 0.5);
-        let u = up * (s.size * 0.5);
-        quad(
-            s.pos - r - u,
-            s.pos + r - u,
-            s.pos + r + u,
-            s.pos - r + u,
-            color,
-        );
-    }
-    for b in &beams {
-        let color = abgr_f(b.color, b.color[3]);
-        let axis = b.b - b.a;
-        let side = axis.cross(fwd).normalize_or_zero() * (b.width * 0.5);
-        quad(b.a - side, b.b - side, b.b + side, b.a + side, color);
-    }
-
-    // Additive blend, depth-test but never depth-write (transparents).
+    // Straight RGB + source alpha: fading is applied once by the GPU.
+    sys::sceGuShadeModel(ShadingModel::Smooth);
     sys::sceGuEnable(GuState::Blend);
     sys::sceGuBlendFunc(
         BlendOp::Add,
@@ -272,17 +318,27 @@ pub unsafe fn draw_effects(pool: &mut FramePool, sim: &StrikeSim, cam: &Camera3d
         0xffffff,
     );
     sys::sceGuDepthMask(1);
-    draw_color_tris(pool, &verts, Mat4::IDENTITY);
+    // A frame-pool allocation must fit one 64 KiB chunk, and chunks must
+    // end on a triangle boundary. Keep working for dense modded firefights.
+    for chunk in verts.chunks(4095) {
+        draw_color_tris(pool, chunk, model);
+    }
     sys::sceGuDepthMask(0);
     sys::sceGuDisable(GuState::Blend);
 }
 
-/// The first-person rifle, drawn over a cleared depth buffer so it never
-/// pokes into walls (the desktop renderer's dedicated viewmodel pass).
-pub unsafe fn draw_viewmodel(pool: &mut FramePool, rifle: &[ColorVert], sim: &StrikeSim) {
+/// Rifle and attached muzzle flames share the current pose and depth pass.
+pub unsafe fn draw_viewmodel(
+    pool: &mut FramePool,
+    rifle: &[ColorVert],
+    sim: &StrikeSim,
+    effects: &EffectRenderer,
+) {
     if !sim.player.alive {
         return;
     }
     clear_depth_for_viewmodel();
-    draw_color_tris(pool, rifle, sim.viewmodel_transform_at(1.0));
+    let model = sim.viewmodel_transform_at(1.0);
+    draw_color_tris(pool, rifle, model);
+    draw_additive(pool, &effects.viewmodel, model);
 }

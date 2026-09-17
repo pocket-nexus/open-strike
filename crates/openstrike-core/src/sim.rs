@@ -417,8 +417,7 @@ impl StrikeSim {
         let muzzle = self
             .viewmodel_transform_at(1.0)
             .transform_point3(MUZZLE_LOCAL);
-        self.effects
-            .spawn(EffectKind::MuzzleFlash { pos: muzzle }, 0.06);
+        self.effects.spawn_viewmodel_muzzle(muzzle, 0.06);
         self.effects.spawn(
             EffectKind::Tracer {
                 a: muzzle,
