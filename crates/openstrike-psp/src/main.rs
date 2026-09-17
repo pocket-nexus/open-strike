@@ -148,6 +148,7 @@ unsafe fn run() {
     let mut pool = FramePool::new();
     let sky_params = sky::SkyParams::default();
     let rifle = present::build_rifle();
+    let mut effects = present::EffectRenderer::new();
     let mut officers = present::OfficerRenderer::new();
 
     // ---- QuickJS ----
@@ -403,8 +404,9 @@ unsafe fn run() {
             {
                 actor_us = bench_now() - actor_start;
             }
-            present::draw_effects(&mut pool, &g.sim, &cam);
-            present::draw_viewmodel(&mut pool, &rifle, &g.sim);
+            effects.prepare(&g.sim, &cam);
+            effects.draw_world(&mut pool);
+            present::draw_viewmodel(&mut pool, &rifle, &g.sim, &effects);
         }
         pocket3d_gu::end_3d();
         // The JSX HUD, unchanged from every other PocketJS host.

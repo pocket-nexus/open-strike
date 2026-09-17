@@ -126,6 +126,11 @@ pub struct Effect {
     pub kind: EffectKind,
     pub age: f32,
     pub ttl: f32,
+    /// First-person flashes follow the current weapon pose, including recoil.
+    /// `kind` still carries a world position for sprite-only backends.
+    pub viewmodel: bool,
+    /// Visual variation independent of the simulation's random sequence.
+    pub variant: u32,
 }
 
 /// Renderer-agnostic effect output (the desktop maps these to scene
@@ -148,11 +153,24 @@ pub struct FxBeam {
 #[derive(Default)]
 pub struct Effects {
     pub list: Vec<Effect>,
+    next_variant: u32,
 }
 
 impl Effects {
     pub fn spawn(&mut self, kind: EffectKind, ttl: f32) {
-        self.list.push(Effect { kind, age: 0.0, ttl });
+        self.list.push(Effect {
+            kind,
+            age: 0.0,
+            ttl,
+            viewmodel: false,
+            variant: self.next_variant,
+        });
+        self.next_variant = self.next_variant.wrapping_add(1);
+    }
+
+    pub fn spawn_viewmodel_muzzle(&mut self, pos: Vec3, ttl: f32) {
+        self.spawn(EffectKind::MuzzleFlash { pos }, ttl);
+        self.list.last_mut().unwrap().viewmodel = true;
     }
 
     pub fn tick(&mut self, dt: f32) {
@@ -169,30 +187,37 @@ impl Effects {
     /// Emit sprites/beams for this frame.
     pub fn emit(&self, sprites: &mut Vec<FxSprite>, beams: &mut Vec<FxBeam>) {
         for e in &self.list {
-            let f = 1.0 - (e.age / e.ttl).clamp(0.0, 1.0);
-            match e.kind {
-                EffectKind::MuzzleFlash { pos } => sprites.push(FxSprite {
-                    pos,
-                    size: 14.0 + 6.0 * f,
-                    color: [1.0, 0.85, 0.4, 0.9 * f],
-                }),
-                EffectKind::Tracer { a, b } => beams.push(FxBeam {
-                    a,
-                    b,
-                    width: 1.6,
-                    color: [1.0, 0.9, 0.55, 0.7 * f],
-                }),
-                EffectKind::Impact { pos } => sprites.push(FxSprite {
-                    pos,
-                    size: 6.0 + 6.0 * (1.0 - f),
-                    color: [0.9, 0.8, 0.6, 0.8 * f],
-                }),
-                EffectKind::BloodPuff { pos } => sprites.push(FxSprite {
-                    pos,
-                    size: 10.0 + 8.0 * (1.0 - f),
-                    color: [0.75, 0.1, 0.05, 0.8 * f],
-                }),
-            }
+            e.emit(sprites, beams);
+        }
+    }
+}
+
+impl Effect {
+    /// The sprite fallback used by backends without a muzzle mesh pass.
+    pub fn emit(&self, sprites: &mut Vec<FxSprite>, beams: &mut Vec<FxBeam>) {
+        let f = 1.0 - (self.age / self.ttl).clamp(0.0, 1.0);
+        match self.kind {
+            EffectKind::MuzzleFlash { pos } => sprites.push(FxSprite {
+                pos,
+                size: 14.0 + 6.0 * f,
+                color: [1.0, 0.85, 0.4, 0.9 * f],
+            }),
+            EffectKind::Tracer { a, b } => beams.push(FxBeam {
+                a,
+                b,
+                width: 1.6,
+                color: [1.0, 0.9, 0.55, 0.7 * f],
+            }),
+            EffectKind::Impact { pos } => sprites.push(FxSprite {
+                pos,
+                size: 6.0 + 6.0 * (1.0 - f),
+                color: [0.9, 0.8, 0.6, 0.8 * f],
+            }),
+            EffectKind::BloodPuff { pos } => sprites.push(FxSprite {
+                pos,
+                size: 10.0 + 8.0 * (1.0 - f),
+                color: [0.75, 0.1, 0.05, 0.8 * f],
+            }),
         }
     }
 }
@@ -280,7 +305,37 @@ impl Rng {
 
 #[cfg(test)]
 mod tests {
-    use super::Weapon;
+    use super::{EffectKind, Effects, Weapon};
+    use alloc::vec::Vec;
+    use glam::Vec3;
+
+    #[test]
+    fn muzzle_attachment_keeps_world_fallback_and_expires_with_the_shot() {
+        let mut effects = Effects::default();
+        let player_muzzle = Vec3::new(10.0, 20.0, 30.0);
+        effects.spawn_viewmodel_muzzle(player_muzzle, 0.06);
+        effects.spawn(EffectKind::MuzzleFlash { pos: Vec3::ZERO }, 0.08);
+        assert!(effects.list[0].viewmodel);
+        assert!(!effects.list[1].viewmodel);
+        assert_ne!(effects.list[0].variant, effects.list[1].variant);
+
+        let mut sprites = Vec::new();
+        let mut beams = Vec::new();
+        effects.emit(&mut sprites, &mut beams);
+        assert_eq!(sprites.len(), 2);
+        assert_eq!(sprites[0].pos, player_muzzle);
+        assert!(beams.is_empty());
+
+        let variant = effects.list[0].variant;
+        effects.tick(1.0 / 60.0);
+        assert_eq!(effects.list[0].variant, variant);
+        effects.tick(0.05);
+        assert_eq!(effects.list.len(), 1);
+        assert!(!effects.list[0].viewmodel);
+        effects.clear();
+        effects.emit(&mut Vec::new(), &mut Vec::new());
+        assert!(effects.list.is_empty());
+    }
 
     #[test]
     fn held_reload_request_refills_once_without_spending_extra_reserve() {
