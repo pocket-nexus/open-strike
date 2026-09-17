@@ -6,6 +6,9 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::ffi::c_void;
+use core::mem::MaybeUninit;
+
+mod read;
 
 use openstrike_core::StrikeSim;
 use openstrike_core::sim::Command;
@@ -88,27 +91,19 @@ pub unsafe fn load(
     if fd.0 < 0 {
         return Err("map file missing");
     }
-    let mut off = 0usize;
-    loop {
-        if off >= buf_cap {
-            sys::sceIoClose(fd);
-            return Err("map larger than the map buffer");
-        }
-        let n = sys::sceIoRead(
-            fd,
-            buf_ptr.add(off) as *mut c_void,
-            (buf_cap - off) as u32,
-        );
+    // The permanent allocation starts uninitialized. Only the prefix written
+    // by successful reads becomes a byte slice for the cooked-map parser.
+    let buffer = core::slice::from_raw_parts_mut(buf_ptr.cast::<MaybeUninit<u8>>(), buf_cap);
+    let loaded = read::read_into(buffer, |target| {
+        let n = sys::sceIoRead(fd, target.as_mut_ptr().cast::<c_void>(), target.len() as u32);
         if n < 0 {
-            sys::sceIoClose(fd);
-            return Err("map read failed");
+            Err("map read failed")
+        } else {
+            Ok(n as usize)
         }
-        if n == 0 {
-            break;
-        }
-        off += n as usize;
-    }
+    });
     sys::sceIoClose(fd);
+    let off = loaded?;
 
     let data: &'static [u8] = core::slice::from_raw_parts(buf_ptr, off);
     pocket3d_gu::writeback(data);

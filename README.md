@@ -78,6 +78,14 @@ EBOOT. The default build still cooks from the BSP/WAD source directory.
 `OPENSTRIKE_COOKED_MAPS=dist/maps` selects the same input for
 `bun scripts/e2e-psp.ts` and `bun scripts/hw.ts`.
 
+The PSP host reserves **one permanent map buffer at the largest map's exact
+byte size**, with a 16-byte-aligned pointer. It reuses that buffer after dropping
+the previous world. An 18.2 MB map therefore avoids the recyclable allocator's
+32 MiB size class. Insufficient arena space produces an error before loading.
+The reader accepts a file that fills the buffer and checks EOF with a separate
+one-byte probe; a larger file or a failed read is rejected. Run
+`bun test test/psp-map-read.test.ts` for the production reader's boundary tests.
+
 PSP builds resolve the normalized SDK in a fixed order: `PSP_SDK`, then
 `PSPDEV`, then Pocket's versioned shared cache at
 `$XDG_CACHE_HOME/pocket-stack/psp/sdk/sdk-noabicalls-normalized-2026-06-19/mipsel-sony-psp`

@@ -126,10 +126,14 @@ unsafe fn run() {
     // The backing memory is never freed (arena world), so treating it as
     // 'static is honest; soundness rule: the current Game (which borrows
     // it through CookedMap) is dropped before any reload overwrites it.
-    let words = (max_map_bytes as usize + 15) / 16 + 1;
-    let map_buf_ptr = alloc::boxed::Box::leak(alloc::vec![0u128; words].into_boxed_slice())
-        .as_mut_ptr() as *mut u8;
-    let map_buf_cap = words * 16;
+    // Recyclable Box/Vec allocations round up to a power-of-two size class:
+    // an 18.2 MB map would reserve 32 MiB on a PSP-1000. The permanent arena
+    // API consumes the requested bytes plus pointer-alignment padding only.
+    let map_buf_cap = max_map_bytes as usize;
+    let map_buf_ptr = pocketjs_psp::arena::alloc_permanent(map_buf_cap, 16);
+    if map_buf_ptr.is_null() {
+        host::halt("not enough memory for the largest cooked map");
+    }
 
     let mut pool = FramePool::new();
     let sky_params = sky::SkyParams::default();
