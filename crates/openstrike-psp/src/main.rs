@@ -692,8 +692,10 @@ impl Bench {
             self.max_segs = segs;
             self.max_work_frame = abs_frame;
         }
-        // Spike forensics: any frame past ~1.5x budget logs itself with its
-        // absolute frame index so it can be correlated with the input script.
+        // Explicit forensics only: writing both USB and Memory Stick for
+        // every slow frame adds stalls and simulation catch-up to the next
+        // frame. Normal benchmarks retain the 300-frame summary and maxima.
+        #[cfg(feature = "bench-spikes")]
         if work > 25_000 {
             let line = alloc::format!(
                 "{{\"spike_frame\":{},\"work_us\":{},\"segs_us\":[{},{},{},{},{}]}}\n",

@@ -19,7 +19,8 @@ const repo = new URL("..", import.meta.url).pathname;
 const argv = Bun.argv.slice(2);
 const flags = new Set(argv.filter((a) => a.startsWith("-")));
 const release = flags.has("-r") || flags.has("--release");
-const bench = flags.has("--bench") || flags.has("--character-bench");
+const bench = ["--bench", "--bench-spikes", "--character-bench", "--combat-bench", "--motion-bench", "--idle-bench"]
+  .some((flag) => flags.has(flag));
 const noBuild = flags.has("--no-build");
 const profile = release ? "release" : "debug";
 

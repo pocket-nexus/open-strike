@@ -80,5 +80,8 @@ The capture harness checks seven actions, the held corpse, and three/six
 actors. Capture-only phase offsets avoid rendering thousands of setup frames;
 hardware benchmarks retain the full timed sweep. PPSSPP images establish
 rendering and liveness. **Frame-rate claims require physical PSP measurements.**
+Normal benchmarks write one summary per 300 frames. `--bench-spikes` enables
+per-frame diagnostic writes to USB and Memory Stick; those writes add stalls
+and are excluded from frame-rate acceptance runs.
 Build the ordinary package again before handing controls back to a player;
 capture builds exit, and benchmark builds inject input or stage actors.

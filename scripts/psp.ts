@@ -42,6 +42,7 @@ const release = argv.includes("-r") || argv.includes("--release");
 const features: string[] = [];
 if (argv.includes("--capture")) features.push("capture");
 if (argv.includes("--bench")) features.push("bench");
+if (argv.includes("--bench-spikes")) features.push("bench-spikes");
 if (argv.includes("--idle-bench")) features.push("idle-bench");
 if (argv.includes("--character-bench")) features.push("character-bench");
 if (argv.includes("--combat-bench")) features.push("combat-bench");

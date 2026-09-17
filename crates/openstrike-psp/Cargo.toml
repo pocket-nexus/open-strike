@@ -35,6 +35,8 @@ libm = "0.2"
 capture = []
 # Rolling frame-time windows to host0:/OpenStrike-bench.jsonl (hardware).
 bench = []
+# Per-frame diagnostic I/O perturbs cadence; keep it out of normal benchmarks.
+bench-spikes = ["bench"]
 # Repeatable actor count/clip scene, never enabled in ordinary builds.
 character-bench = ["bench"]
 # Real simulation, weapon traces and JS round rules with scripted opponents/input.
