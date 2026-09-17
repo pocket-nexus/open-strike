@@ -1,4 +1,4 @@
-//! Original officer's baked presentation, shared by handheld renderers.
+//! Baked character presentation, shared by handheld renderers.
 //! Geometry and poses are authored/evaluated in Blender; the runtime only
 //! interpolates indexed vertices. No allocation, skeleton solver or glTF parser.
 #![no_std]
@@ -6,8 +6,15 @@
 use glam::Vec3;
 use openstrike_core::bot::ActorClip;
 
-const DATA: &[u8] = include_bytes!("../../../assets/characters/police/officer.opch");
-const HEADER: usize = 24;
+mod format;
+pub use format::MAX_CACHE_BYTES;
+const DATA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/character.opch"));
+fn header() -> usize {
+    if textured() { 40 } else { 24 }
+}
+pub fn textured() -> bool {
+    u32_at(4) == 2
+}
 const RECORD: usize = 16;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -66,10 +73,13 @@ pub fn asset_bytes() -> usize {
     DATA.len()
 }
 fn colors_start() -> usize {
-    HEADER + u32_at(16) as usize * RECORD
+    header() + u32_at(16) as usize * RECORD
+}
+fn uv_start() -> usize {
+    colors_start() + vertex_count() * 4
 }
 fn indices_start() -> usize {
-    colors_start() + vertex_count() * 4
+    uv_start() + if textured() { vertex_count() * 4 } else { 0 }
 }
 fn poses_start() -> usize {
     indices_start() + index_count() * 2
@@ -84,8 +94,50 @@ pub fn copy_indices(out: &mut [u16]) {
         *out = index(i) as u16;
     }
 }
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct TexturedVertex {
+    pub u: u16,
+    pub v: u16,
+    pub vertex: PackedVertex,
+}
+
+pub fn textured_vertex(frame: usize, i: usize) -> TexturedVertex {
+    assert!(textured() && i < vertex_count());
+    TexturedVertex {
+        u: u16_at(uv_start() + i * 4),
+        v: u16_at(uv_start() + i * 4 + 2),
+        vertex: baked_vertex(frame, i),
+    }
+}
+
+fn sockets_start() -> usize {
+    poses_start() + baked_frame_count() * vertex_count() * 6
+}
+pub fn texture() -> Option<(usize, &'static [u8])> {
+    if !textured() {
+        return None;
+    }
+    let start = sockets_start() + baked_frame_count() * 12;
+    Some((u32_at(24) as usize, &DATA[start..]))
+}
+/// The attack starts on the first authored Fire pose. AI/hitscan timing stays
+/// shared; hosts install this local-space origin before simulation ticks.
+pub fn attack_origin() -> Vec3 {
+    if !textured() {
+        return Vec3::new(3.60, 50.97, -36.52);
+    }
+    let frame = u32_at(header() + ActorClip::Fire as usize * RECORD) as usize;
+    let at = sockets_start() + frame * 12;
+    Vec3::new(
+        f32::from_bits(u32_at(at)),
+        f32::from_bits(u32_at(at + 4)),
+        f32::from_bits(u32_at(at + 8)),
+    )
+}
+
 pub fn duration(clip: ActorClip) -> f32 {
-    f32::from_bits(u32_at(HEADER + clip as usize * RECORD + 8))
+    f32::from_bits(u32_at(header() + clip as usize * RECORD + 8))
 }
 
 pub struct Pose {
@@ -105,7 +157,7 @@ impl Pose {
         )
     }
     pub fn new(clip: ActorClip, time: f32) -> Self {
-        let at = HEADER + clip as usize * RECORD;
+        let at = header() + clip as usize * RECORD;
         let start = u32_at(at) as usize;
         let count = u32_at(at + 4) as usize;
         let duration = duration(clip);
@@ -173,21 +225,23 @@ impl Pose {
 #[cfg(test)]
 mod tests {
     use super::*;
+    extern crate std;
     #[test]
     fn authored_asset_stays_within_psp_budget_and_indices_are_valid() {
         assert_eq!(&DATA[..4], b"OPCH");
-        assert_eq!(u32_at(4), 1);
+        format::validate(DATA).unwrap();
         assert_eq!(u32_at(16), ActorClip::ALL.len() as u32);
-        assert!(asset_bytes() <= 512 * 1024);
-        assert!(triangle_count() <= 1400);
-        assert!(vertex_count() * core::mem::size_of::<Vertex>() <= 65536);
+        assert!(asset_bytes() <= 4 * 1024 * 1024);
+        assert!(triangle_count() <= 10922);
+        if !textured() {
+            assert!(asset_bytes() <= 512 * 1024);
+            assert!(triangle_count() <= 1400);
+        }
         assert!(index_count() * 2 <= 65536);
         assert_eq!(core::mem::size_of::<PackedVertex>(), 12);
-        assert!(baked_frame_count() * vertex_count() * 24 <= 2 * 1024 * 1024);
-        assert_eq!(
-            DATA.len(),
-            poses_start() + u32_at(20) as usize * vertex_count() * 6
-        );
+        assert_eq!(core::mem::size_of::<TexturedVertex>(), 16);
+        let stride = if textured() { 32 } else { 24 };
+        assert!(baked_frame_count() * vertex_count() * stride <= MAX_CACHE_BYTES);
         for i in 0..index_count() {
             assert!(index(i) < vertex_count());
         }
@@ -221,7 +275,7 @@ mod tests {
     }
     #[test]
     fn batch_sampling_preserves_every_clip_and_vertex() {
-        let mut vertices = [Vertex::default(); 847];
+        let mut vertices = std::vec![Vertex::default(); vertex_count()];
         for clip in ActorClip::ALL {
             for fraction in [0.0, 0.13, 0.37, 0.81, 1.0, 2.0] {
                 let pose = Pose::new(clip, duration(clip) * fraction);
@@ -270,7 +324,7 @@ mod tests {
         );
         for clip in [ActorClip::Idle, ActorClip::Walk, ActorClip::Run] {
             let (start, _, _) = Pose::new(clip, 0.0).frame_pair();
-            let count = u32_at(HEADER + clip as usize * RECORD + 4) as usize;
+            let count = u32_at(header() + clip as usize * RECORD + 4) as usize;
             for i in 0..vertex_count() {
                 let a = baked_vertex(start, i);
                 let b = baked_vertex(start + count - 1, i);

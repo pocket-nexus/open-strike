@@ -4,6 +4,7 @@
 //   bun scripts/psp.ts -r                  # release
 //   bun scripts/psp.ts --map de_inferno --bots 4
 //   bun scripts/psp.ts --cooked-maps dist/maps --bench
+//   bun scripts/psp.ts --character out/character.opch --cooked-maps dist/maps
 //   OPENSTRIKE_MAPS=~/cs bun scripts/psp.ts
 //
 // Maps root (maps/*.bsp + support/*.wad) comes from OPENSTRIKE_MAPS or the
@@ -15,6 +16,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "no
 import { resolve } from "node:path";
 import { resolvePspBuildToolchain } from "../vendor/pocketjs/tools/psp-toolchain.ts";
 import { compilePocketTarget, nativePocketContract } from "./pocket-contract.ts";
+import { requestExtendedMemory } from "./psp-memory.ts";
 
 const repo = new URL("..", import.meta.url).pathname;
 const home = process.env.HOME ?? "";
@@ -31,6 +33,11 @@ if (cookedInput !== undefined && (!cookedInput || cookedInput.startsWith("-"))) 
   throw new Error("--cooked-maps needs a directory");
 }
 const cookedMaps = cookedInput === undefined ? undefined : resolve(cookedInput);
+const characterInput = argv.includes("--character") ? flag("character", "") : process.env.OPENSTRIKE_CHARACTER_ASSET || undefined;
+if (characterInput !== undefined && (!characterInput || characterInput.startsWith("-") || !existsSync(characterInput))) {
+  throw new Error("--character needs an existing local .opch file");
+}
+const characterAsset = characterInput ? resolve(characterInput) : "";
 const release = argv.includes("-r") || argv.includes("--release");
 const features: string[] = [];
 if (argv.includes("--capture")) features.push("capture");
@@ -98,6 +105,8 @@ const llvm = toolchain.llvmBin;
 const env = {
   ...toolchain.environment,
   ...nativePocketContract(pocketPlan),
+  OPENSTRIKE_CHARACTER_ASSET: characterAsset,
+  OPENSTRIKE_PSP_CHARACTER_START: process.env.OPENSTRIKE_PSP_CHARACTER_START ?? "",
   // newlib (QuickJS needs -lc) and rust-psp both define memcpy/_exit/truncf
   // with identical semantics; whichever the linker sees first wins.
   RUSTFLAGS:
@@ -153,6 +162,13 @@ if (existsSync(named)) {
 if (!existsSync(`${ebootDir}/EBOOT.PBP`)) {
   console.error(`no EBOOT.PBP under ${ebootDir}`);
   process.exit(1);
+}
+if (characterAsset) {
+  // Full-detail local characters use the same extended memory as PSPLINK on
+  // a PSP-2000 or later. Original officer packages retain their existing SFO.
+  const pbp = new Uint8Array(await Bun.file(`${ebootDir}/EBOOT.PBP`).arrayBuffer());
+  await Bun.write(`${ebootDir}/EBOOT.PBP`, requestExtendedMemory(pbp));
+  console.log("local character: EBOOT requests PSP-2000+ extended memory");
 }
 console.log(`output: ${ebootDir}/EBOOT.PBP`);
 

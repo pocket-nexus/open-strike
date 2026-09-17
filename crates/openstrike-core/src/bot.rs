@@ -92,6 +92,8 @@ pub struct Bot {
     pub reload_remaining: f32,
     pub magazine: u8,
     pub idle_time: f32,
+    /// Authored attack socket in model feet space; hosts may supply another asset.
+    pub muzzle_local: Vec3,
 }
 
 pub struct BotShot {
@@ -117,6 +119,7 @@ impl Bot {
             reload_remaining: 0.0,
             magazine: 12,
             idle_time: 0.0,
+            muzzle_local: Vec3::new(3.60, 50.97, -36.52),
         }
     }
 
@@ -338,10 +341,10 @@ impl Bot {
         }
     }
 
-    /// The officer's carbine muzzle in the same feet space as its asset.
+    /// The selected character's attack socket in the same feet space as its asset.
     pub fn muzzle_position(&self) -> Vec3 {
         self.transform_scaled(1.0)
-            .transform_point3(Vec3::new(3.60, 50.97, -36.52))
+            .transform_point3(self.muzzle_local)
     }
 
     /// World placement only; the authored Death action owns the whole fall.
@@ -371,6 +374,20 @@ mod tests {
     use alloc::vec;
     use pocket3d_bsp::trace::ModelHulls;
     use pocket3d_bsp::types::CONTENTS_EMPTY;
+
+    #[test]
+    fn authored_attack_origins_follow_body_placement_and_yaw() {
+        let position = Vec3::new(100.0, 20.0, 200.0);
+        let feet = position - Vec3::Y * 36.0;
+        for origin in [Vec3::new(3.60, 50.97, -36.52), Vec3::new(-12.0, 48.0, -42.0)] {
+            let mut bot = Bot::spawn(position, 0.0);
+            bot.muzzle_local = origin;
+            assert!(bot.muzzle_position().distance(feet + origin) < 0.001);
+            bot.yaw = PI * 0.5;
+            let rotated = Vec3::new(origin.z, origin.y, -origin.x);
+            assert!(bot.muzzle_position().distance(feet + rotated) < 0.001);
+        }
+    }
 
     fn open_space() -> MapCollision {
         MapCollision::from_parts(

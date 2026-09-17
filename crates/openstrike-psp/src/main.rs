@@ -149,7 +149,7 @@ unsafe fn run() {
     let sky_params = sky::SkyParams::default();
     let rifle = present::build_rifle();
     let mut effects = present::EffectRenderer::new();
-    let mut officers = present::OfficerRenderer::new();
+    let mut officers = present::CharacterRenderer::new();
 
     // ---- QuickJS ----
     let rt = pocketjs_psp::qjs_alloc::new_runtime();
@@ -268,6 +268,9 @@ unsafe fn run() {
                 }
                 #[cfg(not(feature = "character-bench"))]
                 {
+                    for bot in &mut g.sim.bots {
+                        bot.muzzle_local = openstrike_character::attack_origin();
+                    }
                     g.sim.apply_look(_tick.look_dx, _tick.look_dy);
                     g.sim.tick(&g.world.map().collision, DT, &_tick.sim);
                 }

@@ -5,6 +5,14 @@ use openstrike_core::bot::ActorClip;
 use openstrike_core::{Bot, BotState, StrikeSim};
 
 pub fn stage(sim: &mut StrikeSim, frame: u32) {
+    // Capture one selected action without rendering thousands of warmup frames.
+    // Hardware stress builds retain the full 1/3/6-actor sweep.
+    #[cfg(feature = "capture")]
+    let frame = frame.saturating_add(
+        env!("OPENSTRIKE_PSP_CHARACTER_START")
+            .parse::<u32>()
+            .unwrap_or(0),
+    );
     // Fixed camera from the loaded map's CT spawn, looking into the room.
     // One / three / six visible actors exercise separate load configurations.
     let count = match (frame / 1800) % 3 {
@@ -30,7 +38,11 @@ pub fn stage(sim: &mut StrikeSim, frame: u32) {
         } else {
             col as f32 - 1.0
                 + if count == 6 {
-                    if row == 0 { -0.35 } else { 0.35 }
+                    if row == 0 {
+                        -0.35
+                    } else {
+                        0.35
+                    }
                 } else {
                     0.0
                 }
