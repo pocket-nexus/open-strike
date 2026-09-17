@@ -39,3 +39,9 @@ bench = []
 character-bench = ["bench"]
 # Real simulation, weapon traces and JS round rules with scripted opponents/input.
 combat-bench = ["bench"]
+
+# Real pad mapping, wall-clock simulation and moving camera on hardware.
+motion-bench = ["bench"]
+
+# Fixed spawn/camera comparison, ignoring hardware input.
+idle-bench = ["bench"]

@@ -291,13 +291,29 @@ Controls: analog stick moves, `△/✕/□/○` looks, `R` fires, `L` jumps, d-p
 down reloads, d-pad up walks, **SELECT** opens the return-to-menu dialog. In
 the menu, d-pad selects a map and `○` deploys.
 
-Current hardware measurements are in the [combat report](docs/PSP_COMBAT_PERFORMANCE.md).
+Earlier hardware measurements are in the [combat report](docs/PSP_COMBAT_PERFORMANCE.md).
 The HUD uses fixed text cells, batched paint updates and native effect fades;
 the PSP presentation loop preserves refresh opportunities when a completed
 frame arrives during a new blanking interval. Cooking bakes lightmaps into vertex colors, keeps WAD
 textures as swizzled CLUT8 with full mip chains, and ships PVS so the renderer
 draws only the visible leaves; each `.p3d` is consumed zero-copy, and maps
 load on demand from `maps/` next to the EBOOT into one reused buffer.
+
+The PSP simulation follows elapsed time at **60 fixed ticks per second**,
+including one complete JavaScript rules/HUD turn per tick. Rendering can run
+at a lower rate without slowing movement, jumps or reloads. Catch-up is capped
+at four ticks per frame; map transitions reset the clock. The host collects
+JavaScript cycles when arena growth exceeds 256 KiB after the last collection.
+The renderer culls
+individual faces, uses bounded optional triangle strips, and retains the
+original triangle lists when a cache entry cannot be built.
+
+For repeatable hardware checks, build with `--idle-bench` (fixed camera, no pad input), `--motion-bench`
+(pad-driven movement, jumping, firing, reloading and menu/map transitions) or `--combat-bench`
+(combat and round transitions). `--bench` records manual play. These modes write `OpenStrike-bench.jsonl`
+with frame timing, simulation tick counts and submitted index counts. Use
+`--map de_inferno --cooked-maps dist/maps --release` with the selected mode.
+Rebuild without a benchmark flag for interactive acceptance.
 
 ## PS Vita
 
