@@ -212,6 +212,7 @@ unsafe fn run() {
 
     // ---- Fixed simulation clock; presentation may skip display refreshes. ----
     let mut clock = FixedClock::new(sys::sceKernelGetSystemTimeWide() as u64);
+    #[cfg(feature = "bench")]
     let mut tick_count = 0u64;
     let mut frame_count: u32 = 0;
     let mut last_present_vcount = sys::sceDisplayGetVcount();
@@ -311,9 +312,9 @@ unsafe fn run() {
             }
             strike::drain_host(|c| host_cmd = Some(c));
             ffi::ui().tick();
-            tick_count += 1;
             #[cfg(feature = "bench")]
             {
+                tick_count += 1;
                 segments[0] += after_sim - sim_start;
                 segments[1] += after_dispatch - after_sim;
                 segments[2] += after_js - after_dispatch;
