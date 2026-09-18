@@ -198,6 +198,9 @@ unsafe fn run() {
     // and bots at eval time) are game CONFIGURATION: keep them and replay
     // into every freshly loaded simulation.
     let mut boot_cfg: Vec<Command> = Vec::new();
+    // Configuration issued during guest startup also applies to autostart's
+    // first round, before the first simulation tick or rendered frame.
+    strike::drain(|cmd| boot_cfg.push(cmd));
     let mut game: Option<Game> = None;
     let mut menu_time: f64 = 0.0;
     if !AUTOSTART.is_empty() {
