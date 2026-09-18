@@ -1,7 +1,7 @@
 //! Bounded two-player Companion protocol and client prediction. The room runs
 //! the same movement and rifle simulation as the local game at 64 Hz.
 use crate::{
-    Bot, BotState, GameEvent, Phase, Player, SimInput, StrikeSim, Weapon, clock::TICK_SECONDS,
+    clock::TICK_SECONDS, Bot, BotState, GameEvent, Phase, Player, SimInput, StrikeSim, Weapon,
 };
 use alloc::{collections::VecDeque, format, string::String, vec, vec::Vec};
 use glam::Vec3;
@@ -181,6 +181,8 @@ pub struct Reply {
     pub epoch: u32,
     pub tick: u32,
     pub ack: u32,
+    /// Inputs held by the authority, including those awaiting a fixed tick.
+    pub received: u32,
     pub you: usize,
     pub round: u32,
     pub playing: bool,
@@ -193,6 +195,7 @@ pub struct Client {
     map: String,
     epoch: u32,
     next: u32,
+    received: u32,
     tick: u32,
     round: u32,
     age: u32,
@@ -211,6 +214,7 @@ impl Client {
             map,
             epoch: 0,
             next: 1,
+            received: 0,
             tick: 0,
             round: 0,
             age: 0,
@@ -235,7 +239,12 @@ impl Client {
             inputs: if self.epoch == 0 {
                 Vec::new()
             } else {
-                self.history.iter().take(BATCH).copied().collect()
+                self.history
+                    .iter()
+                    .filter(|input| input.0 > self.received)
+                    .take(BATCH)
+                    .copied()
+                    .collect()
             },
         };
         serde_json::to_string(&request).unwrap()
@@ -263,6 +272,8 @@ impl Client {
             || reply.you > 1
             || reply.epoch == 0
             || reply.ack >= self.next
+            || reply.received < reply.ack
+            || reply.received >= self.next
             || !reply.players.iter().all(State::valid)
         {
             return;
@@ -285,6 +296,7 @@ impl Client {
             self.age = 0;
             self.epoch = reply.epoch;
             self.tick = reply.tick;
+            self.received = reply.received;
             let me = &reply.players[reply.you];
             let round_changed = self.round != reply.round;
             self.round = reply.round;
@@ -377,6 +389,7 @@ impl Client {
         if !self.blocked && (self.age >= STALE_TICKS || self.history.len() == HISTORY) {
             self.epoch = 0;
             self.next = 1;
+            self.received = 0;
             self.tick = 0;
             self.round = 0;
             self.history.clear();
@@ -543,6 +556,7 @@ impl Duel {
             epoch: peer.epoch,
             tick: self.tick,
             ack: peer.ack,
+            received: peer.received,
             you: slot,
             round: self.round,
             playing: self.live && self.restart == 0,

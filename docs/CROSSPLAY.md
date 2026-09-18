@@ -35,7 +35,7 @@ bun scripts/crossplay.ts \
   --desktop /path/to/de_dust2.bsp
 ```
 
-Launch `openstrike.prx` through PSPLINK. Choose **CROSSPLAY**, then the same
+Launch `openstrike-psp.prx` through PSPLINK. Choose **CROSSPLAY**, then the same
 map. The round begins when both players connect. A kill updates both scores;
 the room respawns both players after three seconds. PSP controls match local
 play. On Mac, use WASD, mouse aim/fire, Space and R.
@@ -60,7 +60,10 @@ server rewind for lag compensation.
 Each peer keeps at most **128 input ticks**, sends at most **12 per exchange**,
 and has one guest request in flight. Payloads stay within PocketJS's
 **2,500-character / 4,096-byte** record budgets. The framework mailbox has
-8 fixed slots. Duplicate inputs are ignored; gaps and stale epochs are
+8 fixed slots. Snapshots report both received and executed input sequences.
+Clients keep unexecuted input for prediction but send only input the server
+has not received, so USB round trips do not fill each batch with duplicates.
+Duplicate inputs are ignored; gaps and stale epochs are
 rejected. Two seconds without a valid snapshot freeze local gameplay and
 start a fresh join. The authority expires inactive peers after two seconds
 and stops the round. A map mismatch requires a map change instead of retrying.

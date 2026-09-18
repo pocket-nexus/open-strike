@@ -129,10 +129,9 @@ fn wall_blocks_hits_and_clock_prevents_request_speedup() {
 fn malformed_map_gap_epoch_and_stale_peer_are_rejected() {
     let mut room = duel();
     let col = floor(false);
-    assert!(
-        room.exchange(0, r#"{"v":1,"map":"wrong","epoch":0,"inputs":[]}"#)
-            .is_err()
-    );
+    assert!(room
+        .exchange(0, r#"{"v":1,"map":"wrong","epoch":0,"inputs":[]}"#)
+        .is_err());
     let a = exchange(&mut room, 0, 0, vec![]);
     exchange(&mut room, 1, 0, vec![]);
     let raw = serde_json::to_string(&Request {
@@ -206,8 +205,62 @@ fn two_clients_predict_and_reconcile_with_bounded_payloads() {
     }
 }
 #[test]
+fn usb_round_trip_does_not_accumulate_input_or_rejoin() {
+    let col = floor(false);
+    let mut room = duel();
+    let mut sim = StrikeSim::new(room.players[0].player.state.pos, 0.0, vec![], 0);
+    sim.network = Some(Client::new("fixture".into()));
+    let other = exchange(&mut room, 1, 0, vec![]);
+    let mut to_server: Option<(u32, String)> = None;
+    let mut to_client: Option<(u32, String)> = None;
+    let mut epoch = None;
+    // One request in flight, 156 ms RTT, and authoritative execution after
+    // receipt. An immediate-response fixture hides duplicate batch starvation.
+    for tick in 0..64 * 30 {
+        exchange(&mut room, 1, other.epoch, vec![]);
+        if to_client.as_ref().is_some_and(|(due, _)| *due == tick) {
+            let (_, raw) = to_client.take().unwrap();
+            sim.network.as_mut().unwrap().receive(&raw);
+        }
+        sim.tick(
+            &col,
+            clock::TICK_SECONDS,
+            &SimInput {
+                move_x: if tick < 64 * 20 { 0.3 } else { 0.0 },
+                ..Default::default()
+            },
+        );
+        if to_server.as_ref().is_some_and(|(due, _)| *due == tick) {
+            let (_, raw) = to_server.take().unwrap();
+            let reply = room.exchange(0, &raw).unwrap();
+            let state: Reply = serde_json::from_str(&reply).unwrap();
+            assert_eq!(
+                *epoch.get_or_insert(state.epoch),
+                state.epoch,
+                "unexpected rejoin"
+            );
+            to_client = Some((tick + 5, reply));
+        }
+        if to_server.is_none() && to_client.is_none() {
+            let raw = sim.network.as_ref().unwrap().request();
+            assert!(raw.len() <= PAYLOAD_LIMIT);
+            to_server = Some((tick + 5, raw));
+        }
+        room.step(&col);
+    }
+    assert_eq!(room.round, 1);
+    assert_eq!(sim.network.as_ref().unwrap().status, "LIVE");
+    assert!(
+        sim.player
+            .state
+            .pos
+            .distance(room.players[0].player.state.pos)
+            < 1.0
+    );
+}
+#[test]
 fn map_identity_covers_collision_and_topology_not_texture_tessellation() {
-    use pocket3d_bsp::cooked::{P3dWriter, tag};
+    use pocket3d_bsp::cooked::{tag, P3dWriter};
     let bytes = |collision: u8, texture: u8| {
         let mut w = P3dWriter::new();
         for (name, data) in [
