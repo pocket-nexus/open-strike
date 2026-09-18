@@ -6,7 +6,13 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[lib]
+name = "openstrike_native"
+path = "src/native.rs"
+crate-type = ["cdylib"]
+
 [dependencies]
+pocket-desktop-native = { path = "../../vendor/pocketjs/engine/crates/pocket-desktop-native" }
 openstrike-character = { path = "../openstrike-character" }
 openstrike-core = { path = "../openstrike-core" }
 pocket3d = { workspace = true, features = ["bsp"] }
@@ -18,3 +24,7 @@ glam = { workspace = true }
 anyhow = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
+
+[build-dependencies]
+sha2 = "0.10"
+serde_json = "1"
