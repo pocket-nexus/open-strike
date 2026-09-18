@@ -4,6 +4,10 @@
 //   bun scripts/psp.ts -r                  # release
 //   bun scripts/psp.ts --map de_inferno --bots 4
 //   bun scripts/psp.ts --cooked-maps dist/maps --bench
+//   bun scripts/psp.ts --character out/character.opch --cooked-maps dist/maps
+//   bun scripts/psp.ts -r --mod out/mods/frieren/mod.json --package
+//   bun scripts/psp.ts -r --proximity-bench # one walking actor at 36 units
+//   bun scripts/psp.ts -r --approach-bench  # approach/retreat under real bot fire
 //   OPENSTRIKE_MAPS=~/cs bun scripts/psp.ts
 //
 // Maps root (maps/*.bsp + support/*.wad) comes from OPENSTRIKE_MAPS or the
@@ -15,6 +19,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "no
 import { resolve } from "node:path";
 import { resolvePspBuildToolchain } from "../vendor/pocketjs/tools/psp-toolchain.ts";
 import { compilePocketTarget, nativePocketContract } from "./pocket-contract.ts";
+import { requestExtendedMemory } from "./psp-memory.ts";
 
 const repo = new URL("..", import.meta.url).pathname;
 const home = process.env.HOME ?? "";
@@ -31,13 +36,30 @@ if (cookedInput !== undefined && (!cookedInput || cookedInput.startsWith("-"))) 
   throw new Error("--cooked-maps needs a directory");
 }
 const cookedMaps = cookedInput === undefined ? undefined : resolve(cookedInput);
+const characterInput = argv.includes("--character") ? flag("character", "") : process.env.OPENSTRIKE_CHARACTER_ASSET || undefined;
+if (characterInput !== undefined && (!characterInput || characterInput.startsWith("-") || !existsSync(characterInput))) {
+  throw new Error("--character needs an existing local .opch file");
+}
+const characterAsset = characterInput ? resolve(characterInput) : "";
+const modPaths: string[] = [];
+for (let i = 0; i < argv.length; i++) {
+  if (argv[i] !== "--mod") continue;
+  const path = argv[++i];
+  if (!path || path.startsWith("-") || !existsSync(path)) throw new Error("--mod needs an existing manifest");
+  modPaths.push(resolve(path));
+}
+if (characterAsset && modPaths.length) throw new Error("Use --character or --mod, not both");
+if (modPaths.length > 7) throw new Error("At most seven additional mod packs");
 const release = argv.includes("-r") || argv.includes("--release");
 const features: string[] = [];
 if (argv.includes("--capture")) features.push("capture");
 if (argv.includes("--bench")) features.push("bench");
+if (argv.includes("--bench-spikes")) features.push("bench-spikes");
 if (argv.includes("--idle-bench")) features.push("idle-bench");
 if (argv.includes("--character-bench")) features.push("character-bench");
+if (argv.includes("--proximity-bench")) features.push("proximity-bench");
 if (argv.includes("--combat-bench")) features.push("combat-bench");
+if (argv.includes("--approach-bench")) features.push("approach-bench");
 if (argv.includes("--motion-bench")) features.push("motion-bench");
 
 const mapsRoot = process.env.OPENSTRIKE_MAPS ?? `${home}/Downloads/cs-maps-20260705-1836`;
@@ -98,6 +120,11 @@ const llvm = toolchain.llvmBin;
 const env = {
   ...toolchain.environment,
   ...nativePocketContract(pocketPlan),
+  OPENSTRIKE_CHARACTER_ASSET: characterAsset,
+  OPENSTRIKE_MOD_PACKS: JSON.stringify(modPaths),
+  OPENSTRIKE_INITIAL_MOD: process.env.OPENSTRIKE_INITIAL_MOD ?? "",
+  OPENSTRIKE_PSP_CHARACTER_START: process.env.OPENSTRIKE_PSP_CHARACTER_START ?? "",
+  OPENSTRIKE_PSP_PROBE_DISTANCE: process.env.OPENSTRIKE_PSP_PROBE_DISTANCE ?? "",
   // newlib (QuickJS needs -lc) and rust-psp both define memcpy/_exit/truncf
   // with identical semantics; whichever the linker sees first wins.
   RUSTFLAGS:
@@ -153,6 +180,13 @@ if (existsSync(named)) {
 if (!existsSync(`${ebootDir}/EBOOT.PBP`)) {
   console.error(`no EBOOT.PBP under ${ebootDir}`);
   process.exit(1);
+}
+if (characterAsset || modPaths.length > 0) {
+  // Full-detail local characters use the same extended memory as PSPLINK on
+  // a PSP-2000 or later. Original officer packages retain their existing SFO.
+  const pbp = new Uint8Array(await Bun.file(`${ebootDir}/EBOOT.PBP`).arrayBuffer());
+  await Bun.write(`${ebootDir}/EBOOT.PBP`, requestExtendedMemory(pbp));
+  console.log("local mod resources: EBOOT requests PSP-2000+ extended memory");
 }
 console.log(`output: ${ebootDir}/EBOOT.PBP`);
 

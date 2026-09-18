@@ -7,6 +7,8 @@ on:
       - "crates/openstrike-psp/src/maps.rs"
       - "crates/openstrike-psp/src/main.rs"
       - "test/psp-map-read.test.ts"
+      - "scripts/psp-memory.ts"
+      - "test/psp-memory.test.ts"
       - ".github/workflows/psp-map-read.yml"
   push:
     branches: [main]
@@ -15,6 +17,8 @@ on:
       - "crates/openstrike-psp/src/maps.rs"
       - "crates/openstrike-psp/src/main.rs"
       - "test/psp-map-read.test.ts"
+      - "scripts/psp-memory.ts"
+      - "test/psp-memory.test.ts"
       - ".github/workflows/psp-map-read.yml"
   workflow_dispatch: {}
 
@@ -32,4 +36,4 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
       - uses: dtolnay/rust-toolchain@stable
-      - run: bun test test/psp-map-read.test.ts
+      - run: bun test test/psp-map-read.test.ts test/psp-memory.test.ts

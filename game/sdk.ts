@@ -6,6 +6,8 @@
 // and apply after the guest turn — state read through this module is always
 // the host's last-published snapshot, never a guess.
 
+import classicMod from "../mods/classic.json";
+
 export interface StrikeState {
   time: number;
   phase: "menu" | "starting" | "live" | "won" | "lost";
@@ -23,7 +25,13 @@ export interface StrikeState {
 }
 
 export type StrikeEvent =
-  | { type: "hit"; bot: number; headshot: boolean; damage: number; fatal: boolean }
+  | {
+      type: "hit";
+      bot: number;
+      headshot: boolean;
+      damage: number;
+      fatal: boolean;
+    }
   | { type: "playerDamaged"; amount: number; hp: number }
   | { type: "playerDied" }
   | { type: "roundReset" };
@@ -45,10 +53,24 @@ export interface BotsConfig {
   damageMax: number;
 }
 
+export interface ModDefinition {
+  readonly id: string;
+  readonly title: string;
+  readonly description: string;
+  readonly weapon: WeaponConfig;
+  readonly bots: BotsConfig;
+  readonly hud: { readonly reload: string; readonly weapon: string };
+}
+
 export interface NativeStrike {
+  /** Complete packs this host can render, in native resource order. */
+  mods?: readonly ModDefinition[];
+  initialMod?: number;
+  /** Optional benchmark hook; absent from ordinary builds. */
+  __hudMark?(end: number): void;
   /** Cooked maps available to loadMap (index-aligned), host-injected. */
   maps?: string[];
-  loadMap?(index: number): void;
+  loadMap?(index: number, modIndex?: number): void;
   toMenu?(): void;
   setPhase(phase: string): void;
   resetRound(): void;
@@ -62,8 +84,15 @@ export interface NativeStrike {
 
 const native = (globalThis as { strike?: NativeStrike }).strike;
 if (!native) {
-  throw new Error("openstrike: no `strike` surface — is this running under the game host?");
+  throw new Error(
+    "openstrike: no `strike` surface — is this running under the game host?",
+  );
 }
+
+const mods: readonly ModDefinition[] = native.mods ?? [classicMod];
+let selectedMod = native.initialMod ?? 0;
+if (!Number.isInteger(selectedMod) || !mods[selectedMod])
+  throw new Error("Invalid initial mod");
 
 let current: StrikeState = {
   time: 0,
@@ -85,14 +114,38 @@ type Handler = (e: StrikeEvent) => void;
 type TickHandler = (s: StrikeState) => void;
 const handlers = new Map<string, Set<Handler>>();
 const tickHandlers = new Set<TickHandler>();
+let tickSnapshot: TickHandler[] = [];
+let ticksChanged = false;
+
+/** Measure the HUD callback only when a profiling host installs the hook. */
+export function profileHud(callback: () => void): () => void {
+  const mark = native!.__hudMark;
+  if (!mark) return callback;
+  return () => {
+    mark(0);
+    try {
+      callback();
+    } finally {
+      mark(1);
+    }
+  };
+}
 
 native.__dispatch = (state, events) => {
   current = state;
-  for (const e of events) {
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i];
     const set = handlers.get(e.type);
     if (set) for (const h of [...set]) h(e);
   }
-  for (const h of [...tickHandlers]) h(state);
+  // Rebuild only on subscription changes. Retain a local snapshot so a
+  // callback can subscribe/unsubscribe without changing this dispatch.
+  if (ticksChanged) {
+    tickSnapshot = [...tickHandlers];
+    ticksChanged = false;
+  }
+  const ticks = tickSnapshot;
+  for (let i = 0; i < ticks.length; i++) ticks[i](state);
 };
 
 export const strike = {
@@ -110,14 +163,28 @@ export const strike = {
   /** Runs once per tick, after events, with the fresh state. */
   onTick(fn: TickHandler): () => void {
     tickHandlers.add(fn);
-    return () => tickHandlers.delete(fn);
+    ticksChanged = true;
+    return () => {
+      if (tickHandlers.delete(fn)) ticksChanged = true;
+    };
   },
 
   // ---- intent (queued host-side, applied after this guest turn) ----------
   /** Map names the host can load (empty on hosts that boot pre-loaded). */
   maps: (native.maps ?? []) as readonly string[],
   /** Ask the host to load a cooked map and start a round (menu hosts). */
-  loadMap: (index: number) => native.loadMap?.(index),
+  loadMap: (index: number) => native.loadMap?.(index, selectedMod),
+  mods,
+  mod: (): ModDefinition => mods[selectedMod],
+  /** Selection is a menu operation; a running world keeps its resources. */
+  selectMod: (index: number): boolean => {
+    if (current.phase !== "menu" || !Number.isInteger(index) || !mods[index])
+      return false;
+    selectedMod = index;
+    native.configureWeapon(mods[index].weapon);
+    native.configureBots(mods[index].bots);
+    return true;
+  },
   /** Leave the round and return to the main menu (menu hosts). */
   toMenu: () => native.toMenu?.(),
   setPhase: (phase: StrikeState["phase"]) => native.setPhase(phase),

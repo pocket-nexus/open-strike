@@ -313,6 +313,10 @@ For repeatable hardware checks, build with `--idle-bench` (fixed camera, no pad 
 (combat and round transitions). `--bench` records manual play. These modes write `OpenStrike-bench.jsonl`
 with frame timing, simulation tick counts and submitted index counts. Use
 `--map de_inferno --cooked-maps dist/maps --release` with the selected mode.
+`--proximity-bench` stages one walking actor at a fixed camera-relative distance
+(`OPENSTRIKE_PSP_PROBE_DISTANCE`, default 36 units); `--approach-bench` moves
+toward and away from an opponent while collision, AI, damage and round rules run.
+The HUD callback, DrawList build and UI GE submission have separate timing fields.
 Rebuild without a benchmark flag for interactive acceptance.
 
 ## PS Vita
@@ -343,6 +347,13 @@ See [`crates/openstrike-vita/README.md`](crates/openstrike-vita/README.md) for
 the pinned toolchain, controls and emulator-capture details.
 
 ## Modding, v0.1 shape
+
+PSP packages can include [selectable mod packs](docs/MODS.md): choose a
+character, first-person weapon and shot presentation together at game
+initialization. The local Frieren example pairs one opponent with a
+Blender-authored staff and Zoltraak effects. A second Blender recipe adds
+Pikachu with ballistic Poké Ball throws. The shared catalogue and guest
+contract are available for other host adapters.
 
 The `strike` surface currently speaks: state snapshots (`hp`, `ammo`,
 `phase`, `aliveBots`, …), events (`hit`, `playerDamaged`, `playerDied`,

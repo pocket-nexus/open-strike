@@ -6,6 +6,7 @@
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
     "strict": true,
+    "resolveJsonModule": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "types": ["bun-types"],

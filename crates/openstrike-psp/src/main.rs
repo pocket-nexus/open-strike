@@ -39,7 +39,7 @@ mod strike;
 use core::ffi::c_void;
 
 use libquickjs_sys::*;
-use pocket3d_gu::{sky, Camera3d, FramePool, WorldRenderer};
+use pocket3d_gu::{Camera3d, FramePool, WorldRenderer, sky};
 use pocketjs_psp::{dbg, ffi, ge, host, pak};
 #[cfg(any(feature = "capture", feature = "motion-bench", feature = "idle-bench"))]
 use psp::sys::CtrlButtons;
@@ -52,8 +52,8 @@ use psp::sys::IoOpenFlags;
 use psp::sys::{self, CtrlMode, GuContextType, GuSyncBehavior, GuSyncMode, SceCtrlData};
 
 use input::PadInput;
-use openstrike_core::clock::{FixedClock, TICK_SECONDS};
 use openstrike_core::StrikeSim;
+use openstrike_core::clock::{FixedClock, TICK_SECONDS};
 
 psp::module!("openstrike", 1, 1);
 
@@ -147,9 +147,13 @@ unsafe fn run() {
 
     let mut pool = FramePool::new();
     let sky_params = sky::SkyParams::default();
-    let rifle = present::build_rifle();
+    let mut active_mod = openstrike_mods::INITIAL;
+    let mut rifle = present::build_viewmodel(openstrike_mods::get(active_mod).unwrap());
     let mut effects = present::EffectRenderer::new();
-    let mut officers = present::OfficerRenderer::new();
+    let mut projectile_mesh = present::build_projectile(openstrike_mods::get(active_mod).unwrap());
+    let mut officers = Some(present::CharacterRenderer::new(
+        openstrike_mods::get(active_mod).unwrap().character(),
+    ));
 
     // ---- QuickJS ----
     let rt = pocketjs_psp::qjs_alloc::new_runtime();
@@ -198,6 +202,9 @@ unsafe fn run() {
     // and bots at eval time) are game CONFIGURATION: keep them and replay
     // into every freshly loaded simulation.
     let mut boot_cfg: Vec<Command> = Vec::new();
+    // Configuration issued during guest startup also applies to autostart's
+    // first round, before the first simulation tick or rendered frame.
+    strike::drain(|cmd| openstrike_core::sim::retain_configuration(&mut boot_cfg, cmd));
     let mut game: Option<Game> = None;
     let mut menu_time: f64 = 0.0;
     if !AUTOSTART.is_empty() {
@@ -206,7 +213,12 @@ unsafe fn run() {
             host::halt("autostart map not in the catalogue");
         };
         match maps::load(&map_names[idx], map_buf_ptr, map_buf_cap, &boot_cfg) {
-            Ok(g) => game = Some(g),
+            Ok(mut g) => {
+                openstrike_mods::get(active_mod)
+                    .unwrap()
+                    .configure(&mut g.sim);
+                game = Some(g);
+            }
             Err(e) => host::halt(e),
         }
     }
@@ -268,6 +280,9 @@ unsafe fn run() {
                 }
                 #[cfg(not(feature = "character-bench"))]
                 {
+                    for bot in &mut g.sim.bots {
+                        bot.muzzle_local = officers.as_ref().unwrap().asset.attack_origin();
+                    }
                     g.sim.apply_look(_tick.look_dx, _tick.look_dy);
                     g.sim.tick(&g.world.map().collision, DT, &_tick.sim);
                 }
@@ -306,7 +321,7 @@ unsafe fn run() {
             host::drain_jobs(rt);
             strike::drain(|cmd| match &mut game {
                 Some(g) => g.sim.apply(cmd, 0),
-                None => boot_cfg.push(cmd),
+                None => openstrike_core::sim::retain_configuration(&mut boot_cfg, cmd),
             });
             #[cfg(feature = "character-bench")]
             if let Some(g) = &mut game {
@@ -336,11 +351,18 @@ unsafe fn run() {
             JS_RunGC(rt);
             last_gc_bump = pocketjs_psp::arena::stats().bump_bytes;
         }
+        #[cfg(feature = "bench")]
+        let ui_draw_start = bench_now();
         let ui = ffi::ui();
         let (words_ptr, words_len) = {
             let dl = ui.draw();
             (dl.words.as_ptr(), dl.words.len())
         };
+
+        #[cfg(feature = "bench")]
+        {
+            bench.ui_draw_sum += bench_now() - ui_draw_start;
+        }
 
         // Pipelined present: wait out frame N-1, show it, then record N.
         #[cfg(feature = "bench")]
@@ -399,18 +421,29 @@ unsafe fn run() {
             g.world.draw(&mut pool, &cam);
             #[cfg(feature = "bench")]
             let actor_start = bench_now();
-            officers.draw(&mut pool, &g.sim.bots, &cam);
+            officers
+                .as_mut()
+                .unwrap()
+                .draw(&mut pool, &g.sim.bots, &cam);
             #[cfg(feature = "bench")]
             {
                 actor_us = bench_now() - actor_start;
             }
             effects.prepare(&g.sim, &cam);
+            present::draw_projectiles(&mut pool, &projectile_mesh, &g.sim);
             effects.draw_world(&mut pool);
             present::draw_viewmodel(&mut pool, &rifle, &g.sim, &effects);
         }
         pocket3d_gu::end_3d();
         // The JSX HUD, unchanged from every other PocketJS host.
+        #[cfg(feature = "bench")]
+        let ui_ge_start = bench_now();
         ge::render_over(ffi::ui(), core::slice::from_raw_parts(words_ptr, words_len));
+        #[cfg(feature = "bench")]
+        {
+            bench.ui_ge_sum += bench_now() - ui_ge_start;
+            bench.hud_script_sum += strike::take_hud_time();
+        }
         sys::sceGuFinish();
 
         #[cfg(feature = "bench")]
@@ -432,7 +465,12 @@ unsafe fn run() {
                 tris,
                 indices,
                 actor_us,
-                if game.is_some() { officers.visible } else { 0 },
+                if game.is_some() {
+                    officers.as_ref().unwrap().visible
+                } else {
+                    0
+                },
+                officers.as_ref().unwrap().asset.triangle_count(),
             );
         }
 
@@ -445,10 +483,21 @@ unsafe fn run() {
         // World lifecycle intents, applied OUTSIDE all world borrows (the
         // presented frame already showed the menu's LOADING state).
         match host_cmd {
-            Some(strike::HostCmd::LoadMap(i)) if game.is_none() => {
+            Some(strike::HostCmd::LoadMap { map: i, mod_index }) if game.is_none() => {
                 if let Some(name) = map_names.get(i) {
                     match maps::load(name, map_buf_ptr, map_buf_cap, &boot_cfg) {
-                        Ok(g) => {
+                        Ok(mut g) => {
+                            let pack = openstrike_mods::get(mod_index).unwrap();
+                            if active_mod != mod_index {
+                                // The GE has finished. Release the old cache before
+                                // allocating another full-detail character cache.
+                                drop(officers.take());
+                                officers = Some(present::CharacterRenderer::new(pack.character()));
+                                rifle = present::build_viewmodel(pack);
+                                projectile_mesh = present::build_projectile(pack);
+                                active_mod = mod_index;
+                            }
+                            pack.configure(&mut g.sim);
                             game = Some(g);
                             #[cfg(feature = "bench")]
                             {
@@ -507,6 +556,9 @@ struct Bench {
     /// Breakdown of the frame that set max_work: 4 segments + the
     /// uninstrumented rest (draw recording, input, GE list build).
     max_segs: [u64; 5],
+    hud_script_sum: u64,
+    ui_draw_sum: u64,
+    ui_ge_sum: u64,
     actor_sum: u64,
     actor_max: u64,
     actor_count_sum: u64,
@@ -567,6 +619,9 @@ impl Bench {
             indices_sum: 0,
             seg_sums: [0; 4],
             max_segs: [0; 5],
+            hud_script_sum: 0,
+            ui_draw_sum: 0,
+            ui_ge_sum: 0,
             actor_sum: 0,
             actor_max: 0,
             actor_count_sum: 0,
@@ -654,6 +709,7 @@ impl Bench {
         indices: u32,
         actor_us: u64,
         actors: u32,
+        actor_triangles: usize,
     ) {
         let now = bench_now();
         let mut segs = [0u64; 5];
@@ -689,8 +745,10 @@ impl Bench {
             self.max_segs = segs;
             self.max_work_frame = abs_frame;
         }
-        // Spike forensics: any frame past ~1.5x budget logs itself with its
-        // absolute frame index so it can be correlated with the input script.
+        // Explicit forensics only: writing both USB and Memory Stick for
+        // every slow frame adds stalls and simulation catch-up to the next
+        // frame. Normal benchmarks retain the 300-frame summary and maxima.
+        #[cfg(feature = "bench-spikes")]
         if work > 25_000 {
             let line = alloc::format!(
                 "{{\"spike_frame\":{},\"work_us\":{},\"segs_us\":[{},{},{},{},{}]}}\n",
@@ -735,7 +793,7 @@ impl Bench {
         self.work_times.sort_unstable();
         self.frame_times.sort_unstable();
         let line = alloc::format!(
-            "{{\"window\":{},\"frames\":{},\"sim_ticks\":{},\"map_loads\":{},\"menu_returns\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_indices\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"arena_total_free_bytes\":{},\"js_live_requested_bytes\":{},\"max_segs_us\":[{},{},{},{},{}],\"actor_probe\":{},\"avg_actor_us\":{},\"max_actor_us\":{},\"avg_actors\":{},\"max_actors\":{},\"actor_triangles_each\":{},\"observed_fps_milli\":{},\"p95_frame_us\":{},\"p99_frame_us\":{},\"p95_work_us\":{},\"late_frames\":{},\"input\":{{\"buttons_or\":{},\"analog_frames\":{},\"movement_frames\":{},\"airborne_frames\":{},\"look_frames\":{},\"ammo_min\":{},\"ammo_max\":{},\"reloading_frames\":{}}},\"actor_clip_frames\":[{},{},{},{},{},{},{}],\"combat_probe\":{},\"events\":{{\"hits\":{},\"kills\":{},\"damage\":{},\"deaths\":{},\"resets\":{},\"shots\":{}}},\"reused_vblanks\":{},\"missed_vblanks\":{},\"max_work_frame\":{}}}\n",
+            "{{\"window\":{},\"frames\":{},\"sim_ticks\":{},\"map_loads\":{},\"menu_returns\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_indices\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"arena_total_free_bytes\":{},\"js_live_requested_bytes\":{},\"max_segs_us\":[{},{},{},{},{}],\"actor_probe\":{},\"avg_actor_us\":{},\"max_actor_us\":{},\"avg_actors\":{},\"max_actors\":{},\"actor_triangles_each\":{},\"observed_fps_milli\":{},\"p95_frame_us\":{},\"p99_frame_us\":{},\"p95_work_us\":{},\"late_frames\":{},\"input\":{{\"buttons_or\":{},\"analog_frames\":{},\"movement_frames\":{},\"airborne_frames\":{},\"look_frames\":{},\"ammo_min\":{},\"ammo_max\":{},\"reloading_frames\":{}}},\"actor_clip_frames\":[{},{},{},{},{},{},{}],\"combat_probe\":{},\"events\":{{\"hits\":{},\"kills\":{},\"damage\":{},\"deaths\":{},\"resets\":{},\"shots\":{}}},\"reused_vblanks\":{},\"missed_vblanks\":{},\"avg_hud_script_us\":{},\"avg_ui_draw_us\":{},\"avg_ui_ge_us\":{},\"max_work_frame\":{}}}\n",
             self.window,
             n,
             self.sim_ticks,
@@ -767,7 +825,7 @@ impl Bench {
             self.actor_max,
             self.actor_count_sum / n,
             self.actor_count_max,
-            openstrike_character::triangle_count(),
+            actor_triangles,
             self.frame_samples as u64 * 1_000_000_000 / self.frame_sum.max(1),
             self.frame_times[284],
             self.frame_times[296],
@@ -801,6 +859,9 @@ impl Bench {
             self.events[5],
             self.reused_vblanks,
             self.missed_vblanks,
+            self.hud_script_sum / n,
+            self.ui_draw_sum / n,
+            self.ui_ge_sum / n,
             self.max_work_frame,
         );
         for path in [
@@ -832,6 +893,9 @@ impl Bench {
         self.indices_sum = 0;
         self.seg_sums = [0; 4];
         self.max_segs = [0; 5];
+        self.hud_script_sum = 0;
+        self.ui_draw_sum = 0;
+        self.ui_ge_sum = 0;
         self.actor_sum = 0;
         self.actor_max = 0;
         self.actor_count_sum = 0;
@@ -955,7 +1019,14 @@ fn motion_sample(tick: u64) -> (CtrlButtons, u8, u8) {
         let button = match cycle {
             1200 => CtrlButtons::SELECT,
             1230 => CtrlButtons::RIGHT,
+            t if (1290..1318).contains(&t)
+                && (t - 1290) % 4 == 0
+                && (t - 1290) / 4 < (tick / 1800) % openstrike_mods::PACKS.len() as u64 =>
+            {
+                CtrlButtons::DOWN
+            }
             1260 | 1320 => CtrlButtons::CIRCLE,
+            1350 if openstrike_mods::PACKS.len() > 1 => CtrlButtons::CIRCLE,
             _ => CtrlButtons::empty(),
         };
         return (button, 128, 128);

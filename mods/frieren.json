@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "id": "frieren",
+  "title": "Frieren",
+  "description": "Staff + Zoltraak / 1 opponent",
+  "character": "character.opch",
+  "viewmodel": "staff.opvm",
+  "effects": "beam",
+  "weapon": {
+    "magSize": 12,
+    "reserve": 120,
+    "fireInterval": 0.36,
+    "reloadTime": 2.4,
+    "damageBody": 34,
+    "damageHead": 100
+  },
+  "bots": {
+    "count": 1,
+    "speed": 190,
+    "attackInterval": 1.4,
+    "damageMin": 8,
+    "damageMax": 14
+  },
+  "hud": {
+    "reload": "RESTORING MANA",
+    "weapon": "ZOLTRAAK"
+  },
+  "viewMotion": "staff"
+}

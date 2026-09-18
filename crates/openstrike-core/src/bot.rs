@@ -6,7 +6,7 @@ use glam::{Mat4, Vec3};
 use pocket3d_bsp::collide::{CharacterState, HullKind, MoveInput, MoveParams, step_character};
 use pocket3d_bsp::trace::{Hull, MapCollision};
 
-use crate::weapon::{EffectKind, Effects, Rng};
+use crate::weapon::Rng;
 use crate::{AnimPlayback, atan2f, sin_cos, sqrtf};
 
 pub const BOT_HEALTH: i32 = 100;
@@ -92,10 +92,15 @@ pub struct Bot {
     pub reload_remaining: f32,
     pub magazine: u8,
     pub idle_time: f32,
+    /// Authored attack socket in model feet space; hosts may supply another asset.
+    pub muzzle_local: Vec3,
 }
 
 pub struct BotShot {
     pub damage: i32,
+    pub from: Vec3,
+    pub target: Vec3,
+    pub hitscan_hit: bool,
 }
 
 impl Bot {
@@ -117,6 +122,7 @@ impl Bot {
             reload_remaining: 0.0,
             magazine: 12,
             idle_time: 0.0,
+            muzzle_local: Vec3::new(3.60, 50.97, -36.52),
         }
     }
 
@@ -156,8 +162,8 @@ impl Bot {
         self.yaw += diff.clamp(-max, max);
     }
 
-    /// Advance one tick. Returns a shot descriptor when the bot lands a hit
-    /// on the player this tick.
+    /// Advance one tick. Returns every shot, including its aim and the
+    /// original hitscan hit decision; the simulation selects its delivery.
     #[allow(clippy::too_many_arguments)]
     pub fn tick(
         &mut self,
@@ -167,7 +173,6 @@ impl Bot {
         dt: f32,
         cfg: &BotConfig,
         rng: &mut Rng,
-        effects: &mut Effects,
     ) -> Option<BotShot> {
         self.prev_pos = self.state.pos;
         self.shot_age += dt;
@@ -255,7 +260,7 @@ impl Bot {
                     self.attack_timer = cfg.attack_interval * rng.range(0.85, 1.25);
                     self.magazine -= 1;
                     self.shot_age = 0.0;
-                    // Muzzle flash + tracer from the bot towards the player.
+                    // Aim and damage intent; the simulation selects delivery.
                     let from = self.muzzle_position();
                     let miss = rng.f32() > (1.25 - dist / 900.0).clamp(0.25, 0.85);
                     let aim = if miss {
@@ -264,14 +269,18 @@ impl Bot {
                     } else {
                         player_eye
                     };
-                    effects.spawn(EffectKind::MuzzleFlash { pos: from }, 0.08);
-                    effects.spawn(EffectKind::Tracer { a: from, b: aim }, 0.09);
-                    if !miss {
+                    let damage = if !miss {
                         let span = (cfg.damage_max - cfg.damage_min).max(0) as f32;
-                        shot = Some(BotShot {
-                            damage: cfg.damage_min + (rng.f32() * (span + 1.0)) as i32,
-                        });
-                    }
+                        cfg.damage_min + (rng.f32() * (span + 1.0)) as i32
+                    } else {
+                        cfg.damage_min
+                    };
+                    shot = Some(BotShot {
+                        damage,
+                        from,
+                        target: aim,
+                        hitscan_hit: !miss,
+                    });
                 }
             }
             BotState::Dead => {}
@@ -338,10 +347,10 @@ impl Bot {
         }
     }
 
-    /// The officer's carbine muzzle in the same feet space as its asset.
+    /// The selected character's attack socket in the same feet space as its asset.
     pub fn muzzle_position(&self) -> Vec3 {
         self.transform_scaled(1.0)
-            .transform_point3(Vec3::new(3.60, 50.97, -36.52))
+            .transform_point3(self.muzzle_local)
     }
 
     /// World placement only; the authored Death action owns the whole fall.
@@ -372,6 +381,23 @@ mod tests {
     use pocket3d_bsp::trace::ModelHulls;
     use pocket3d_bsp::types::CONTENTS_EMPTY;
 
+    #[test]
+    fn authored_attack_origins_follow_body_placement_and_yaw() {
+        let position = Vec3::new(100.0, 20.0, 200.0);
+        let feet = position - Vec3::Y * 36.0;
+        for origin in [
+            Vec3::new(3.60, 50.97, -36.52),
+            Vec3::new(-12.0, 48.0, -42.0),
+        ] {
+            let mut bot = Bot::spawn(position, 0.0);
+            bot.muzzle_local = origin;
+            assert!(bot.muzzle_position().distance(feet + origin) < 0.001);
+            bot.yaw = PI * 0.5;
+            let rotated = Vec3::new(origin.z, origin.y, -origin.x);
+            assert!(bot.muzzle_position().distance(feet + rotated) < 0.001);
+        }
+    }
+
     fn open_space() -> MapCollision {
         MapCollision::from_parts(
             vec![],
@@ -391,7 +417,6 @@ mod tests {
         bot.brain = BotState::Attack;
         bot.magazine = 1;
         bot.attack_timer = 0.0;
-        let mut effects = Effects::default();
         let mut rng = Rng(7);
         let config = BotConfig::default();
         bot.tick(
@@ -401,7 +426,6 @@ mod tests {
             1.0 / 60.0,
             &config,
             &mut rng,
-            &mut effects,
         );
         assert_eq!(bot.magazine, 0);
         assert_eq!(bot.animation_sample().0, ActorClip::Fire);
@@ -414,7 +438,6 @@ mod tests {
                 1.0 / 60.0,
                 &config,
                 &mut rng,
-                &mut effects,
             );
         }
         assert_eq!(bot.animation_sample().0, ActorClip::Reload);
@@ -427,7 +450,6 @@ mod tests {
                 1.0 / 60.0,
                 &config,
                 &mut rng,
-                &mut effects,
             );
             assert_eq!(bot.magazine, 0, "fired/refilled before reload completed");
         }
@@ -440,7 +462,6 @@ mod tests {
                 1.0 / 60.0,
                 &config,
                 &mut rng,
-                &mut effects,
             );
         }
         assert!(bot.magazine > 0);
