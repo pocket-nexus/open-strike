@@ -124,6 +124,7 @@ pub unsafe fn load(
     // The constructor uses the fallback count. Rebuild the initial roster
     // after the guest's configuration, as reset_round does for later rounds.
     sim.spawn_bots(0);
+    sim.weapon.reset();
     let world = WorldRenderer::new(map);
     Ok(Game { sim, world })
 }

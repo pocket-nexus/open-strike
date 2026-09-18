@@ -348,6 +348,12 @@ the pinned toolchain, controls and emulator-capture details.
 
 ## Modding, v0.1 shape
 
+PSP packages can include [selectable mod packs](docs/MODS.md): choose a
+character, first-person weapon and shot presentation together at game
+initialization. The local Frieren example pairs one opponent with a
+Blender-authored staff and Zoltraak effects. The shared catalogue and guest
+contract are available for other host adapters.
+
 The `strike` surface currently speaks: state snapshots (`hp`, `ammo`,
 `phase`, `aliveBots`, …), events (`hit`, `playerDamaged`, `playerDied`,
 `roundReset`), and commands (`setPhase`, `resetRound`, `addWin`/`addLoss`,

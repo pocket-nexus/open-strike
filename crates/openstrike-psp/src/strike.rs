@@ -16,6 +16,12 @@ use pocketjs_psp::ffi::{add_fn, arg_i32};
 // Symbols the vendored libquickjs-sys omits (provided by the linked QuickJS
 // C library — the established local-extern pattern).
 extern "C" {
+    fn JS_ParseJSON(
+        ctx: *mut JSContext,
+        buf: *const core::ffi::c_char,
+        len: usize,
+        filename: *const core::ffi::c_char,
+    ) -> JSValue;
     fn JS_NewAtom(ctx: *mut JSContext, name: *const core::ffi::c_char) -> JSAtom;
     fn JS_NewStringLen(ctx: *mut JSContext, s: *const u8, len: usize) -> JSValue;
     fn JS_NewArray(ctx: *mut JSContext) -> JSValue;
@@ -35,7 +41,7 @@ pub unsafe fn drain(mut apply: impl FnMut(Command)) {
 /// Commands, drained by the frame loop after present.
 #[derive(Clone, Copy, Debug)]
 pub enum HostCmd {
-    LoadMap(usize),
+    LoadMap { map: usize, mod_index: usize },
     ToMenu,
 }
 
@@ -54,8 +60,16 @@ unsafe extern "C" fn js_load_map(
     argv: *mut JSValue,
 ) -> JSValue {
     let i = arg_i32(ctx, argc, argv, 0);
-    if i >= 0 {
-        HOST_CMDS.push(HostCmd::LoadMap(i as usize));
+    let mod_index = if argc > 1 {
+        arg_i32(ctx, argc, argv, 1)
+    } else {
+        openstrike_mods::INITIAL as i32
+    };
+    if i >= 0 && mod_index >= 0 && openstrike_mods::get(mod_index as usize).is_some() {
+        HOST_CMDS.push(HostCmd::LoadMap {
+            map: i as usize,
+            mod_index: mod_index as usize,
+        });
     }
     JS_UNDEFINED
 }
@@ -110,11 +124,7 @@ unsafe fn get_f32(ctx: *mut JSContext, obj: JSValue, key: &'static [u8], default
     let mut out = 0f64;
     let bad = JS_ToFloat64(ctx, &mut out, v) != 0;
     JS_FreeValue(ctx, v);
-    if bad {
-        default
-    } else {
-        out as f32
-    }
+    if bad { default } else { out as f32 }
 }
 
 unsafe fn get_i32(ctx: *mut JSContext, obj: JSValue, key: &'static [u8], default: i32) -> i32 {
@@ -241,6 +251,25 @@ unsafe extern "C" fn js_configure_bots(
 /// Install `globalThis.strike` (intent ops; the SDK adds `__dispatch`).
 pub unsafe fn register(ctx: *mut JSContext, global: JSValue, maps: &[alloc::string::String]) {
     let obj = JS_NewObject(ctx);
+    let metadata = openstrike_mods::METADATA;
+    let mut source = metadata.as_bytes().to_vec();
+    source.push(0);
+    let mods = JS_ParseJSON(
+        ctx,
+        source.as_ptr() as *const _,
+        metadata.len(),
+        b"mods.json\0".as_ptr() as *const _,
+    );
+    if JS_ValueGetTag(mods) == JS_TAG_EXCEPTION {
+        pocketjs_psp::host::halt("cannot initialize mod catalogue");
+    }
+    set_val(ctx, obj, b"mods\0", mods);
+    set_val(
+        ctx,
+        obj,
+        b"initialMod\0",
+        JS_NewInt32(ctx, openstrike_mods::INITIAL as i32),
+    );
     for (i, name) in STATE_NAMES.iter().enumerate() {
         STATE_ATOMS[i] = JS_NewAtom(ctx, name.as_ptr() as *const _);
     }
@@ -253,7 +282,7 @@ pub unsafe fn register(ctx: *mut JSContext, global: JSValue, maps: &[alloc::stri
     add_fn(ctx, obj, b"setBotCount\0", js_set_bot_count, 1);
     add_fn(ctx, obj, b"configureWeapon\0", js_configure_weapon, 1);
     add_fn(ctx, obj, b"configureBots\0", js_configure_bots, 1);
-    add_fn(ctx, obj, b"loadMap\0", js_load_map, 1);
+    add_fn(ctx, obj, b"loadMap\0", js_load_map, 2);
     add_fn(ctx, obj, b"toMenu\0", js_to_menu, 0);
     // The cooked-map catalogue (menu hosts): strike.maps = ["de_dust2", …].
     let arr = JS_NewArray(ctx);

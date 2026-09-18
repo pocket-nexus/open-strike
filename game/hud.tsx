@@ -48,6 +48,7 @@ type Ref = NonNullable<Parameters<typeof hot.text>[0]>;
 
 export default function Hud() {
   const s0 = strike.state();
+  const mod = strike.mod();
   // SELECT opens/closes the quit dialog (BTN.SELECT = 0x0001). The mount is
   // structural but user-initiated — never on the combat hot path.
   const [dialog, setDialog] = createSignal(false);
@@ -225,7 +226,7 @@ export default function Hud() {
         lAmmoBarColor = barColor;
         paint(P.ammoFill, barColor);
       }
-      fill(P.ammoScale, s.ammo / 30, AMMO_BAR_W);
+      fill(P.ammoScale, s.ammo / mod.weapon.magSize, AMMO_BAR_W);
     }
     if (s.reloading !== lReloading) {
       lReloading = s.reloading;
@@ -478,7 +479,7 @@ export default function Hud() {
                 }
                 style={{ textColor: AMBER }}
               >
-                RELOADING
+                {mod.hud.reload}
               </Text>
               <View style={{ width: AMMO_BAR_W * S, height: 2 * S, bgColor: "#e8f0f21c" }}>
                 <View
@@ -504,7 +505,7 @@ export default function Hud() {
                   height: S >= 2 ? 40 : 20,
                 }}
               >
-                30
+                {mod.weapon.magSize}
               </Text>
               <Text
                 class={

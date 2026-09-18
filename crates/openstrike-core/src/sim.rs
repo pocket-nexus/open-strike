@@ -9,7 +9,7 @@ use pocket3d_bsp::trace::{Hull, MapCollision};
 use pocket3d_bsp::types::SpawnPoint;
 
 use crate::bot::{Bot, BotConfig};
-use crate::weapon::{EffectKind, Effects, MUZZLE_LOCAL, RANGE, Rng, Weapon, WeaponConfig};
+use crate::weapon::{EffectKind, Effects, RANGE, Rng, Weapon, WeaponConfig};
 use crate::{sin_cos, sinf, sqrtf};
 
 pub const MOUSE_SENS: f32 = 0.002;
@@ -70,7 +70,9 @@ pub enum Phase {
     /// gameplay mod (JS) — Rust only knows the gate is closed.
     Starting,
     Live,
-    Ended { won: bool },
+    Ended {
+        won: bool,
+    },
 }
 
 /// Facts the core reports to the guest, batched per tick (RUNTIMES.md Law 2:
@@ -105,6 +107,19 @@ pub enum Command {
     ConfigureBots(BotConfig),
 }
 
+/// Retain only the latest initialization settings, in command order. Menu
+/// visits must not grow a replay log or retain score/round commands.
+pub fn retain_configuration(pending: &mut Vec<Command>, command: Command) {
+    if !matches!(
+        command,
+        Command::ConfigureWeapon(_) | Command::ConfigureBots(_) | Command::SetBotCount(_)
+    ) {
+        return;
+    }
+    pending.retain(|old| core::mem::discriminant(old) != core::mem::discriminant(&command));
+    pending.push(command);
+}
+
 #[derive(Default, Clone, Copy)]
 pub struct Score {
     pub wins: u32,
@@ -136,6 +151,7 @@ pub struct StrikeSim {
     pub bot_count: usize,
     pub weapon: Weapon,
     pub effects: Effects,
+    pub presentation: crate::presentation::Presentation,
     pub rng: Rng,
     pub phase: Phase,
     pub score: Score,
@@ -167,6 +183,7 @@ impl StrikeSim {
             bot_count,
             weapon: Weapon::default(),
             effects: Effects::default(),
+            presentation: crate::presentation::Presentation::default(),
             rng: Rng(0x0DDB1A5E5BAD5EED),
             phase: Phase::Starting,
             score: Score::default(),
@@ -416,15 +433,18 @@ impl StrikeSim {
         // Effects: muzzle flash + tracer + impact.
         let muzzle = self
             .viewmodel_transform_at(1.0)
-            .transform_point3(MUZZLE_LOCAL);
-        self.effects.spawn_viewmodel_muzzle(muzzle, 0.06);
+            .transform_point3(self.presentation.muzzle);
+        let beam = self.presentation.shot == crate::presentation::ShotStyle::Beam;
+        self.effects
+            .spawn_viewmodel_muzzle(muzzle, if beam { 0.18 } else { 0.06 });
         self.effects.spawn(
             EffectKind::Tracer {
                 a: muzzle,
                 b: hit_point,
             },
-            0.07,
+            if beam { 0.18 } else { 0.07 },
         );
+        self.effects.list.last_mut().unwrap().viewmodel = true;
 
         if let Some(i) = hit_bot {
             let bot = &mut self.bots[i];
@@ -502,5 +522,86 @@ pub fn ray_aabb(origin: Vec3, dir: Vec3, min: Vec3, max: Vec3) -> Option<f32> {
         Some(enter.max(0.0))
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod mod_tests {
+    use super::*;
+    use crate::presentation::{Presentation, ShotStyle};
+    #[test]
+    fn menu_configuration_is_bounded_and_last_command_wins() {
+        let mut pending = Vec::new();
+        for i in 0..100 {
+            retain_configuration(&mut pending, Command::SetBotCount(8));
+            retain_configuration(&mut pending, Command::AddWin);
+            retain_configuration(&mut pending, Command::ResetRound);
+            retain_configuration(
+                &mut pending,
+                Command::ConfigureBots(BotConfig {
+                    count: i % 3 + 1,
+                    ..Default::default()
+                }),
+            );
+            retain_configuration(
+                &mut pending,
+                Command::ConfigureWeapon(WeaponConfig {
+                    mag_size: 12,
+                    reserve: 120,
+                    ..Default::default()
+                }),
+            );
+            assert_eq!(pending.len(), 3);
+        }
+        let mut sim = StrikeSim::new(Vec3::ZERO, 0., Vec::new(), 3);
+        sim.presentation = Presentation {
+            muzzle: Vec3::new(0., 12., -29.3),
+            shot: ShotStyle::Beam,
+        };
+        for command in pending {
+            sim.apply(command, 0);
+        }
+        sim.reset_round(0);
+        assert_eq!(sim.bot_count, 1);
+        assert_eq!(sim.weapon.ammo, 12);
+        assert_eq!(sim.weapon.reserve, 120);
+        assert_eq!(sim.score.wins, 0);
+        assert_eq!(sim.presentation.shot, ShotStyle::Beam);
+        assert_eq!(sim.presentation.muzzle, Vec3::new(0., 12., -29.3));
+    }
+    #[test]
+    fn presentation_does_not_change_ballistics_or_rng() {
+        use pocket3d_bsp::{trace::ModelHulls, types::CONTENTS_EMPTY};
+        let col = MapCollision::from_parts(
+            alloc::vec![],
+            alloc::vec![],
+            alloc::vec![],
+            alloc::vec![ModelHulls {
+                headnodes: [CONTENTS_EMPTY; 4],
+                origin: Vec3::ZERO
+            }],
+            alloc::vec![],
+        );
+        let mut gun = StrikeSim::new(Vec3::ZERO, 0., Vec::new(), 0);
+        let mut magic = StrikeSim::new(Vec3::ZERO, 0., Vec::new(), 0);
+        magic.presentation = Presentation {
+            muzzle: Vec3::new(0., 12., -29.3),
+            shot: ShotStyle::Beam,
+        };
+        gun.fire_shot(&col);
+        magic.fire_shot(&col);
+        let end = |sim: &StrikeSim| {
+            sim.effects
+                .list
+                .iter()
+                .find_map(|e| match e.kind {
+                    EffectKind::Tracer { b, .. } => Some(b),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        assert_eq!(end(&gun), end(&magic));
+        assert_eq!(gun.rng.0, magic.rng.0);
+        assert_eq!(gun.player.pitch, magic.player.pitch);
     }
 }

@@ -7,11 +7,9 @@ use alloc::vec::Vec;
 
 use glam::{Mat4, Vec3};
 use openstrike_core::muzzle;
-use openstrike_core::weapon::{
-    rifle_boxes, EffectKind, FxBeam, FxSprite, GUN_COLORS, MUZZLE_LOCAL,
-};
+use openstrike_core::weapon::{EffectKind, FxBeam, FxSprite, GUN_COLORS, rifle_boxes};
 use openstrike_core::{Bot, StrikeSim};
-use pocket3d_gu::mesh::{clear_depth_for_viewmodel, draw_color_tris, ColorVert};
+use pocket3d_gu::mesh::{ColorVert, clear_depth_for_viewmodel, draw_color_tris};
 use pocket3d_gu::{Camera3d, FramePool};
 use psp::sys::{self, BlendFactor, BlendOp, GuState, ShadingModel};
 
@@ -103,7 +101,20 @@ fn add_box(out: &mut Vec<ColorVert>, min: Vec3, max: Vec3, rgba: [u8; 4]) {
 }
 
 /// The rifle viewmodel as vertex-colored triangles (built once at boot).
-pub fn build_rifle() -> Vec<ColorVert> {
+pub fn build_viewmodel(pack: &openstrike_mods::ModPack) -> Vec<ColorVert> {
+    if let Some(mesh) = pack.viewmodel() {
+        return (0..mesh.len())
+            .map(|i| {
+                let (p, color) = mesh.vertex(i);
+                ColorVert {
+                    x: p.x,
+                    y: p.y,
+                    z: p.z,
+                    color,
+                }
+            })
+            .collect();
+    }
     let mut out = Vec::new();
     for b in rifle_boxes() {
         add_box(&mut out, b.min, b.max, GUN_COLORS[b.color]);
@@ -141,6 +152,7 @@ struct CharacterTexture {
 }
 
 pub struct CharacterRenderer {
+    pub asset: openstrike_character::Asset,
     pairs: PoseCache,
     indices: Vec<u16>,
     held_indices: Vec<u16>,
@@ -148,16 +160,16 @@ pub struct CharacterRenderer {
     pub visible: u32,
 }
 impl CharacterRenderer {
-    pub fn new() -> Self {
-        let frames = openstrike_character::baked_frame_count();
-        let vertices = openstrike_character::vertex_count();
-        let pairs = if openstrike_character::textured() {
+    pub fn new(asset: openstrike_character::Asset) -> Self {
+        let frames = asset.baked_frame_count();
+        let vertices = asset.vertex_count();
+        let pairs = if asset.textured() {
             let mut pairs = Vec::with_capacity(frames * vertices);
             for frame in 0..frames {
                 for i in 0..vertices {
                     pairs.push([
-                        openstrike_character::textured_vertex(frame, i),
-                        openstrike_character::textured_vertex((frame + 1).min(frames - 1), i),
+                        asset.textured_vertex(frame, i),
+                        asset.textured_vertex((frame + 1).min(frames - 1), i),
                     ]);
                 }
             }
@@ -167,22 +179,22 @@ impl CharacterRenderer {
             for frame in 0..frames {
                 for i in 0..vertices {
                     pairs.push([
-                        openstrike_character::baked_vertex(frame, i),
-                        openstrike_character::baked_vertex((frame + 1).min(frames - 1), i),
+                        asset.baked_vertex(frame, i),
+                        asset.baked_vertex((frame + 1).min(frames - 1), i),
                     ]);
                 }
             }
             PoseCache::Color(pairs)
         };
         assert!(pairs.bytes() <= openstrike_character::MAX_CACHE_BYTES);
-        let texture = openstrike_character::texture().map(|(width, bytes)| CharacterTexture {
+        let texture = asset.texture().map(|(width, bytes)| CharacterTexture {
             width,
             blocks: (0..bytes.len() / 16)
                 .map(|i| TextureBlock(openstrike_character::swizzled_rgba_block(bytes, width, i)))
                 .collect(),
         });
-        let mut indices = alloc::vec![0; openstrike_character::index_count()];
-        openstrike_character::copy_indices(&mut indices);
+        let mut indices = alloc::vec![0; asset.index_count()];
+        asset.copy_indices(&mut indices);
         assert!(vertices * 2 <= u16::MAX as usize);
         let held_indices: Vec<u16> = indices.iter().map(|i| i * 2).collect();
         unsafe {
@@ -203,6 +215,7 @@ impl CharacterRenderer {
             }
         }
         Self {
+            asset,
             pairs,
             indices,
             held_indices,
@@ -243,8 +256,9 @@ impl CharacterRenderer {
             ) {
                 continue;
             }
+            let asset = self.asset;
             let (clip, time) = bot.animation_sample();
-            let (a, b, mix) = openstrike_character::Pose::new(clip, time).frame_pair();
+            let (a, b, mix) = asset.pose(clip, time).frame_pair();
             let mix = if a == b { 0.0 } else { mix };
             let held = mix == 0.0;
             sys::sceGuMorphWeight(0, 1.0 - mix);
@@ -270,7 +284,7 @@ impl CharacterRenderer {
                 } else {
                     self.indices.as_ptr()
                 } as *const c_void,
-                self.pairs.ptr(a * openstrike_character::vertex_count()),
+                self.pairs.ptr(a * asset.vertex_count()),
             );
             self.visible += 1;
         }
@@ -305,8 +319,8 @@ fn effect_vertex(p: Vec3, color: [f32; 4]) -> ColorVert {
 impl EffectRenderer {
     pub fn new() -> Self {
         Self {
-            world: Vec::with_capacity(muzzle::MAX_VERTICES * 8),
-            viewmodel: Vec::with_capacity(muzzle::MAX_VERTICES),
+            world: Vec::with_capacity(openstrike_core::energy::MAX_FOCUS_VERTICES * 8),
+            viewmodel: Vec::with_capacity(openstrike_core::energy::MAX_FOCUS_VERTICES),
             sprites: Vec::with_capacity(32),
             beams: Vec::with_capacity(32),
         }
@@ -327,14 +341,42 @@ impl EffectRenderer {
                 } else {
                     &mut self.world
                 };
-                muzzle::emit(effect.age, effect.ttl, effect.variant, |v| {
+                let mut emit = |v: muzzle::FlameVertex| {
                     let p = if effect.viewmodel {
-                        MUZZLE_LOCAL + v.position
+                        sim.presentation.muzzle + v.position
                     } else {
                         pos + right * v.position.x + up * v.position.y - fwd * v.position.z
                     };
                     out.push(effect_vertex(p, v.color));
-                });
+                };
+                if sim.presentation.shot == openstrike_core::presentation::ShotStyle::Beam {
+                    openstrike_core::energy::focus(effect.age, effect.ttl, &mut emit);
+                } else {
+                    muzzle::emit(effect.age, effect.ttl, effect.variant, &mut emit);
+                }
+            } else if sim.presentation.shot == openstrike_core::presentation::ShotStyle::Beam {
+                match effect.kind {
+                    EffectKind::Tracer { a, b } => {
+                        let a = if effect.viewmodel {
+                            sim.viewmodel_transform_at(1.0)
+                                .transform_point3(sim.presentation.muzzle)
+                        } else {
+                            a
+                        };
+                        openstrike_core::energy::beam(a, b, effect.age, effect.ttl, |v| {
+                            self.world.push(effect_vertex(v.position, v.color))
+                        });
+                    }
+                    EffectKind::Impact { pos } | EffectKind::BloodPuff { pos } => {
+                        openstrike_core::energy::focus(effect.age, effect.ttl, |v| {
+                            self.world.push(effect_vertex(
+                                pos + right * v.position.x + up * v.position.y,
+                                v.color,
+                            ))
+                        });
+                    }
+                    _ => {}
+                }
             } else {
                 effect.emit(&mut self.sprites, &mut self.beams);
             }

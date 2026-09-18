@@ -7,6 +7,7 @@ import { createSignal, For, Show, onCleanup, onMount } from "solid-js";
 import { Text, View } from "@pocketjs/framework/components";
 import { pushFocusGrid, pushFocusScope } from "@pocketjs/framework/input";
 import { platform } from "@pocketjs/framework/platform";
+import { onButtonPress } from "@pocketjs/framework/lifecycle";
 import { strike } from "./sdk.ts";
 
 const INK = "#e8f0f2";
@@ -36,11 +37,97 @@ const ROW_BASE =
 const pretty = (raw: string): { tag: string; name: string } => {
   const us = raw.indexOf("_");
   if (us <= 0) return { tag: "", name: raw.toUpperCase() };
-  return { tag: raw.slice(0, us).toUpperCase(), name: raw.slice(us + 1).toUpperCase() };
+  return {
+    tag: raw.slice(0, us).toUpperCase(),
+    name: raw.slice(us + 1).toUpperCase(),
+  };
 };
 
 export default function MainMenu() {
+  const [choosingMod, setChoosingMod] = createSignal(strike.mods.length > 1);
+  return (
+    <Show
+      when={!choosingMod()}
+      fallback={<ModMenu onSelect={() => setChoosingMod(false)} />}
+    >
+      <MapMenu onBack={() => setChoosingMod(true)} />
+    </Show>
+  );
+}
+
+function ModMenu(props: { onSelect(): void }) {
+  let grid!: Parameters<typeof pushFocusGrid>[0];
+  onMount(() => {
+    const disposeGrid = pushFocusGrid(grid, { columns: 1, wrap: true });
+    const disposeScope = pushFocusScope(grid, { autoFocus: true });
+    onCleanup(() => {
+      disposeScope();
+      disposeGrid();
+    });
+  });
+  return (
+    <View
+      class="w-full h-full justify-center items-center"
+      style={{ bgColor: "#05080cf5" }}
+    >
+      <View class="flex-col items-center gap-1">
+        <Text
+          class={
+            S >= 2
+              ? "text-4xl font-bold tracking-wide"
+              : "text-xl font-bold tracking-wide"
+          }
+          style={{ textColor: INK }}
+        >
+          OPENSTRIKE
+        </Text>
+        <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+          CHOOSE YOUR LOADOUT
+        </Text>
+        <View
+          ref={(el) => (grid = el)}
+          class="flex-col gap-1 mt-3"
+          style={{ width: 330 * S }}
+        >
+          <For each={strike.mods}>
+            {(mod, index) => (
+              <View
+                focusable
+                class={ROW_BASE}
+                onPress={() => {
+                  if (strike.selectMod(index())) props.onSelect();
+                }}
+                style={{ width: 330 * S }}
+              >
+                <Text
+                  class={S >= 2 ? "text-xl font-bold" : "text-sm font-bold"}
+                  style={{ textColor: LIME, width: 86 * S }}
+                >
+                  {mod.title}
+                </Text>
+                <Text
+                  class="text-xs"
+                  style={{ textColor: DIM, width: 220 * S, height: 14 * S }}
+                >
+                  {mod.description}
+                </Text>
+              </View>
+            )}
+          </For>
+        </View>
+        <Text class="text-xs mt-3 tracking-wide" style={{ textColor: DIM }}>
+          ↑↓ SELECT · ○ CONTINUE
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function MapMenu(props: { onBack(): void }) {
   const [loading, setLoading] = createSignal(-1);
+  onButtonPress(0x0001, () => {
+    if (loading() < 0 && strike.mods.length > 1) props.onBack();
+  });
   const deploy = (i: number) => {
     if (loading() >= 0) return;
     setLoading(i);
@@ -60,11 +147,18 @@ export default function MainMenu() {
   });
 
   return (
-    <View class="w-full h-full justify-center items-center" style={{ bgColor: "#05080cE8" }}>
+    <View
+      class="w-full h-full justify-center items-center"
+      style={{ bgColor: "#05080cE8" }}
+    >
       <View class="flex-col items-center gap-1">
         {/* Masthead */}
         <Text
-          class={S >= 2 ? "text-5xl font-bold tracking-wide" : "text-2xl font-bold tracking-wide"}
+          class={
+            S >= 2
+              ? "text-5xl font-bold tracking-wide"
+              : "text-2xl font-bold tracking-wide"
+          }
           style={{ textColor: INK }}
         >
           OPENSTRIKE
@@ -75,7 +169,9 @@ export default function MainMenu() {
             class={S >= 2 ? "text-sm tracking-wide" : "text-xs tracking-wide"}
             style={{ textColor: DIM }}
           >
-            TACTICAL OPERATIONS
+            {strike.mods.length > 1
+              ? strike.mod().title.toUpperCase()
+              : "TACTICAL OPERATIONS"}
           </Text>
           <View style={{ width: 28 * S, height: 1, bgColor: LIME }} />
         </View>
@@ -88,7 +184,12 @@ export default function MainMenu() {
         >
           <For each={strike.maps as string[]}>
             {(raw, i) => (
-              <View focusable onPress={() => deploy(i())} class={ROW_BASE} style={{ width: 145 * S }}>
+              <View
+                focusable
+                onPress={() => deploy(i())}
+                class={ROW_BASE}
+                style={{ width: 145 * S }}
+              >
                 <Text
                   class={S >= 2 ? "text-sm font-bold" : "text-xs font-bold"}
                   style={{ textColor: LIME, width: 18 * S }}
@@ -96,7 +197,11 @@ export default function MainMenu() {
                   {pretty(raw).tag}
                 </Text>
                 <Text
-                  class={S >= 2 ? "text-xl font-bold tracking-wide" : "text-sm font-bold tracking-wide"}
+                  class={
+                    S >= 2
+                      ? "text-xl font-bold tracking-wide"
+                      : "text-sm font-bold tracking-wide"
+                  }
                   style={{ textColor: INK }}
                 >
                   {pretty(raw).name}
@@ -126,6 +231,11 @@ export default function MainMenu() {
               <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
                 ○ DEPLOY
               </Text>
+              <Show when={strike.mods.length > 1}>
+                <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+                  SELECT MOD
+                </Text>
+              </Show>
             </View>
           }
         >

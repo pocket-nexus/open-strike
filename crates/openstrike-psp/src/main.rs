@@ -39,7 +39,7 @@ mod strike;
 use core::ffi::c_void;
 
 use libquickjs_sys::*;
-use pocket3d_gu::{sky, Camera3d, FramePool, WorldRenderer};
+use pocket3d_gu::{Camera3d, FramePool, WorldRenderer, sky};
 use pocketjs_psp::{dbg, ffi, ge, host, pak};
 #[cfg(any(feature = "capture", feature = "motion-bench", feature = "idle-bench"))]
 use psp::sys::CtrlButtons;
@@ -52,8 +52,8 @@ use psp::sys::IoOpenFlags;
 use psp::sys::{self, CtrlMode, GuContextType, GuSyncBehavior, GuSyncMode, SceCtrlData};
 
 use input::PadInput;
-use openstrike_core::clock::{FixedClock, TICK_SECONDS};
 use openstrike_core::StrikeSim;
+use openstrike_core::clock::{FixedClock, TICK_SECONDS};
 
 psp::module!("openstrike", 1, 1);
 
@@ -147,9 +147,12 @@ unsafe fn run() {
 
     let mut pool = FramePool::new();
     let sky_params = sky::SkyParams::default();
-    let rifle = present::build_rifle();
+    let mut active_mod = openstrike_mods::INITIAL;
+    let mut rifle = present::build_viewmodel(openstrike_mods::get(active_mod).unwrap());
     let mut effects = present::EffectRenderer::new();
-    let mut officers = present::CharacterRenderer::new();
+    let mut officers = Some(present::CharacterRenderer::new(
+        openstrike_mods::get(active_mod).unwrap().character(),
+    ));
 
     // ---- QuickJS ----
     let rt = pocketjs_psp::qjs_alloc::new_runtime();
@@ -200,7 +203,7 @@ unsafe fn run() {
     let mut boot_cfg: Vec<Command> = Vec::new();
     // Configuration issued during guest startup also applies to autostart's
     // first round, before the first simulation tick or rendered frame.
-    strike::drain(|cmd| boot_cfg.push(cmd));
+    strike::drain(|cmd| openstrike_core::sim::retain_configuration(&mut boot_cfg, cmd));
     let mut game: Option<Game> = None;
     let mut menu_time: f64 = 0.0;
     if !AUTOSTART.is_empty() {
@@ -209,7 +212,10 @@ unsafe fn run() {
             host::halt("autostart map not in the catalogue");
         };
         match maps::load(&map_names[idx], map_buf_ptr, map_buf_cap, &boot_cfg) {
-            Ok(g) => game = Some(g),
+            Ok(mut g) => {
+                g.sim.presentation = openstrike_mods::get(active_mod).unwrap().presentation();
+                game = Some(g);
+            }
             Err(e) => host::halt(e),
         }
     }
@@ -272,7 +278,7 @@ unsafe fn run() {
                 #[cfg(not(feature = "character-bench"))]
                 {
                     for bot in &mut g.sim.bots {
-                        bot.muzzle_local = openstrike_character::attack_origin();
+                        bot.muzzle_local = officers.as_ref().unwrap().asset.attack_origin();
                     }
                     g.sim.apply_look(_tick.look_dx, _tick.look_dy);
                     g.sim.tick(&g.world.map().collision, DT, &_tick.sim);
@@ -312,7 +318,7 @@ unsafe fn run() {
             host::drain_jobs(rt);
             strike::drain(|cmd| match &mut game {
                 Some(g) => g.sim.apply(cmd, 0),
-                None => boot_cfg.push(cmd),
+                None => openstrike_core::sim::retain_configuration(&mut boot_cfg, cmd),
             });
             #[cfg(feature = "character-bench")]
             if let Some(g) = &mut game {
@@ -412,7 +418,10 @@ unsafe fn run() {
             g.world.draw(&mut pool, &cam);
             #[cfg(feature = "bench")]
             let actor_start = bench_now();
-            officers.draw(&mut pool, &g.sim.bots, &cam);
+            officers
+                .as_mut()
+                .unwrap()
+                .draw(&mut pool, &g.sim.bots, &cam);
             #[cfg(feature = "bench")]
             {
                 actor_us = bench_now() - actor_start;
@@ -452,7 +461,12 @@ unsafe fn run() {
                 tris,
                 indices,
                 actor_us,
-                if game.is_some() { officers.visible } else { 0 },
+                if game.is_some() {
+                    officers.as_ref().unwrap().visible
+                } else {
+                    0
+                },
+                officers.as_ref().unwrap().asset.triangle_count(),
             );
         }
 
@@ -465,10 +479,20 @@ unsafe fn run() {
         // World lifecycle intents, applied OUTSIDE all world borrows (the
         // presented frame already showed the menu's LOADING state).
         match host_cmd {
-            Some(strike::HostCmd::LoadMap(i)) if game.is_none() => {
+            Some(strike::HostCmd::LoadMap { map: i, mod_index }) if game.is_none() => {
                 if let Some(name) = map_names.get(i) {
                     match maps::load(name, map_buf_ptr, map_buf_cap, &boot_cfg) {
-                        Ok(g) => {
+                        Ok(mut g) => {
+                            let pack = openstrike_mods::get(mod_index).unwrap();
+                            if active_mod != mod_index {
+                                // The GE has finished. Release the old cache before
+                                // allocating another full-detail character cache.
+                                drop(officers.take());
+                                officers = Some(present::CharacterRenderer::new(pack.character()));
+                                rifle = present::build_viewmodel(pack);
+                                active_mod = mod_index;
+                            }
+                            g.sim.presentation = pack.presentation();
                             game = Some(g);
                             #[cfg(feature = "bench")]
                             {
@@ -680,6 +704,7 @@ impl Bench {
         indices: u32,
         actor_us: u64,
         actors: u32,
+        actor_triangles: usize,
     ) {
         let now = bench_now();
         let mut segs = [0u64; 5];
@@ -795,7 +820,7 @@ impl Bench {
             self.actor_max,
             self.actor_count_sum / n,
             self.actor_count_max,
-            openstrike_character::triangle_count(),
+            actor_triangles,
             self.frame_samples as u64 * 1_000_000_000 / self.frame_sum.max(1),
             self.frame_times[284],
             self.frame_times[296],
@@ -989,7 +1014,9 @@ fn motion_sample(tick: u64) -> (CtrlButtons, u8, u8) {
         let button = match cycle {
             1200 => CtrlButtons::SELECT,
             1230 => CtrlButtons::RIGHT,
+            1290 if openstrike_mods::PACKS.len() > 1 && (tick / 1800) % 2 == 1 => CtrlButtons::DOWN,
             1260 | 1320 => CtrlButtons::CIRCLE,
+            1350 if openstrike_mods::PACKS.len() > 1 => CtrlButtons::CIRCLE,
             _ => CtrlButtons::empty(),
         };
         return (button, 128, 128);

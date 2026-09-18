@@ -1,7 +1,10 @@
 # Local PSP characters
 
 **The PSP host accepts a local baked character through `--character`.** The
-checked-in police officer remains the default. The selected asset changes bot
+checked-in police officer remains available as Classic. `--character` adds a
+Local Character choice with the Classic weapon and opponent configuration.
+For a complete character, weapon and effect pack, use [selectable mods](MODS.md).
+The selected asset changes bot
 presentation and attack origins; the shared AI, damage, collision and movement
 rules stay in `openstrike-core`.
 
@@ -51,7 +54,7 @@ indices, seven clips, frame ranges, finite sockets, atlas dimensions and a
 16 MiB ceiling for the shared morph cache. PSP texturing uses one 128×128 atlas
 for the current source, u16 UVs, indexed triangles and GE two-frame morphing.
 Each visible actor submits one draw. Pose/texture/index buffers are allocated
-and flushed at startup, then shared across actors without per-frame uploads.
+and flushed when the selected character is loaded, then shared across actors without per-frame uploads.
 The atlas uses the PSP's 16-byte by 8-row tile layout. Swizzling reorders
 the bytes at startup and preserves every RGBA texel.
 

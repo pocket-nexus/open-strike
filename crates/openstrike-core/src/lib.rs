@@ -14,7 +14,9 @@ extern crate alloc;
 
 pub mod bot;
 pub mod clock;
+pub mod energy;
 pub mod muzzle;
+pub mod presentation;
 pub mod sim;
 pub mod weapon;
 
