@@ -344,3 +344,24 @@ grows by appending, never by renumbering.
 - Bot character: see [assets/models/CREDITS.md](assets/models/CREDITS.md).
 - Map/texture data (`.bsp`/`.wad`) is © Valve and must be provided from your
   own copy of the game.
+
+### Pocket Shell native module
+
+`OPENSTRIKE_MAPS=/path/to/cooked/maps bun run build:native` builds a desktop
+`cdylib` and packages it with the HUD, police model and `de_dust2.p3d` under
+`dist/native/macos-app` (or `linux-app`). `native-app.json` describes the installed
+package. Pocket Shell can build it through `OPENSTRIKE_ROOT` or install this
+prebuilt directory through `POCKET_NATIVE_APPS`.
+
+The application uses PocketJS's `pocket-desktop-native` SDK. It has no window
+or event loop of its own: the Shell owns its surface, focus, size and lifecycle.
+The module keeps its simulation, renderer and QuickJS guest per instance; its
+64 Hz simulation steps run inside the host's 60 Hz schedule. Resources resolve
+from the module directory, without changing process environment or working
+folder. Click to capture the mouse; Escape releases it. Minimizing suspends the
+application under Pocket Shell's policy, and closing destroys its state.
+
+Host and module must share the pinned SDK, Rust compiler/profile and resolved
+wgpu versions/features. The build script emits a GPU dependency fingerprint;
+the loader rejects mismatches. This trusted native module runs in the host
+process and does not provide fault or security isolation.

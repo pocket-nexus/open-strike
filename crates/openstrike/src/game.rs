@@ -82,6 +82,10 @@ impl OpenStrike {
 
     /// Upload GPU resources (called from `Game::init` or headless setup).
     pub fn upload_world(&mut self, gpu: &Gpu, renderer: &Renderer) {
+        self.upload_world_with_model(gpu, renderer, crate::args::find_asset("characters/police/officer.glb"));
+    }
+
+    pub fn upload_world_with_model(&mut self, gpu: &Gpu, renderer: &Renderer, model: Option<std::path::PathBuf>) {
         let world = Arc::new(WorldModel::from_bsp(
             gpu,
             &renderer.world_material_layout,
@@ -91,7 +95,7 @@ impl OpenStrike {
         self.scene.world = Some(world);
         self.rifle_asset = Some(build_rifle(gpu, renderer));
 
-        match crate::args::find_asset("characters/police/officer.glb") {
+        match model {
             Some(path) => {
                 match ModelAsset::load_glb(
                     gpu,

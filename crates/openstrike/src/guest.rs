@@ -14,7 +14,7 @@
 //!   → drain commands into the game.
 
 use std::cell::RefCell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use anyhow::{Context, Result, anyhow};
@@ -71,11 +71,6 @@ impl StrikeGuest {
     /// `ui_size` is the logical HUD resolution (window logical size).
     pub fn boot(ui_size: (u32, u32)) -> Result<StrikeGuest> {
         let (js_path, pak_path) = find_bundle()?;
-        let bundle = std::fs::read_to_string(&js_path)
-            .with_context(|| format!("reading {}", js_path.display()))?;
-        let pak =
-            std::fs::read(&pak_path).with_context(|| format!("reading {}", pak_path.display()))?;
-
         let target = option_env!("POCKETJS_TARGET").context("build this host with bun run build:desktop")?;
         let abi: u32 = option_env!("POCKETJS_HOST_ABI").context("missing host ABI")?.parse()?;
         let density: u32 = option_env!("POCKETJS_RASTER_DENSITY").context("missing raster density")?.parse()?;
@@ -83,6 +78,21 @@ impl StrikeGuest {
             option_env!("POCKETJS_LOGICAL_WIDTH").and_then(|v| v.parse().ok()).unwrap_or(ui_size.0),
             option_env!("POCKETJS_LOGICAL_HEIGHT").and_then(|v| v.parse().ok()).unwrap_or(ui_size.1),
         );
+        Self::boot_files(&js_path, &pak_path, ui_size, density, target, abi)
+    }
+
+    pub fn boot_package(root: &Path, size: (u32, u32), density: u32) -> Result<Self> {
+        let target = option_env!("POCKETJS_TARGET").context("missing native module target")?;
+        let abi = option_env!("POCKETJS_HOST_ABI").context("missing native module ABI")?.parse()?;
+        Self::boot_files(&root.join("openstrike.js"), &root.join("openstrike.pak"), size, density, target, abi)
+    }
+
+    fn boot_files(js_path: &Path, pak_path: &Path, ui_size: (u32, u32), density: u32, target: &str, abi: u32) -> Result<Self> {
+        let bundle = std::fs::read_to_string(&js_path)
+            .with_context(|| format!("reading {}", js_path.display()))?;
+        let pak =
+            std::fs::read(&pak_path).with_context(|| format!("reading {}", pak_path.display()))?;
+
         let ui = UiSurface::new_with_density((ui_size.0 as f32, ui_size.1 as f32), density);
         ui.set_identity(target, abi);
         ui.feed_pak(&pak);
@@ -104,6 +114,14 @@ impl StrikeGuest {
             ui_size.1
         );
         Ok(StrikeGuest { guest, ui, commands, ui_size, gfx: None })
+    }
+
+    pub fn resize(&mut self, size: (u32, u32)) -> Result<()> {
+        self.ui_size = size;
+        self.gfx = None;
+        self.ui.with_ui(|ui| ui.set_viewport(size.0 as f32, size.1 as f32));
+        self.guest.eval("resize", &format!("globalThis.__pocketResizeViewport?.({},{})", size.0, size.1))?;
+        Ok(())
     }
 
     /// One guest turn for one game tick.
