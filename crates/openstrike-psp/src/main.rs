@@ -150,6 +150,7 @@ unsafe fn run() {
     let mut active_mod = openstrike_mods::INITIAL;
     let mut rifle = present::build_viewmodel(openstrike_mods::get(active_mod).unwrap());
     let mut effects = present::EffectRenderer::new();
+    let mut projectile_mesh = present::build_projectile(openstrike_mods::get(active_mod).unwrap());
     let mut officers = Some(present::CharacterRenderer::new(
         openstrike_mods::get(active_mod).unwrap().character(),
     ));
@@ -213,7 +214,9 @@ unsafe fn run() {
         };
         match maps::load(&map_names[idx], map_buf_ptr, map_buf_cap, &boot_cfg) {
             Ok(mut g) => {
-                g.sim.presentation = openstrike_mods::get(active_mod).unwrap().presentation();
+                openstrike_mods::get(active_mod)
+                    .unwrap()
+                    .configure(&mut g.sim);
                 game = Some(g);
             }
             Err(e) => host::halt(e),
@@ -427,6 +430,7 @@ unsafe fn run() {
                 actor_us = bench_now() - actor_start;
             }
             effects.prepare(&g.sim, &cam);
+            present::draw_projectiles(&mut pool, &projectile_mesh, &g.sim);
             effects.draw_world(&mut pool);
             present::draw_viewmodel(&mut pool, &rifle, &g.sim, &effects);
         }
@@ -490,9 +494,10 @@ unsafe fn run() {
                                 drop(officers.take());
                                 officers = Some(present::CharacterRenderer::new(pack.character()));
                                 rifle = present::build_viewmodel(pack);
+                                projectile_mesh = present::build_projectile(pack);
                                 active_mod = mod_index;
                             }
-                            g.sim.presentation = pack.presentation();
+                            pack.configure(&mut g.sim);
                             game = Some(g);
                             #[cfg(feature = "bench")]
                             {
@@ -1014,7 +1019,12 @@ fn motion_sample(tick: u64) -> (CtrlButtons, u8, u8) {
         let button = match cycle {
             1200 => CtrlButtons::SELECT,
             1230 => CtrlButtons::RIGHT,
-            1290 if openstrike_mods::PACKS.len() > 1 && (tick / 1800) % 2 == 1 => CtrlButtons::DOWN,
+            t if (1290..1318).contains(&t)
+                && (t - 1290) % 4 == 0
+                && (t - 1290) / 4 < (tick / 1800) % openstrike_mods::PACKS.len() as u64 =>
+            {
+                CtrlButtons::DOWN
+            }
             1260 | 1320 => CtrlButtons::CIRCLE,
             1350 if openstrike_mods::PACKS.len() > 1 => CtrlButtons::CIRCLE,
             _ => CtrlButtons::empty(),

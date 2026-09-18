@@ -351,7 +351,8 @@ the pinned toolchain, controls and emulator-capture details.
 PSP packages can include [selectable mod packs](docs/MODS.md): choose a
 character, first-person weapon and shot presentation together at game
 initialization. The local Frieren example pairs one opponent with a
-Blender-authored staff and Zoltraak effects. The shared catalogue and guest
+Blender-authored staff and Zoltraak effects. A second Blender recipe adds
+Pikachu with ballistic Poké Ball throws. The shared catalogue and guest
 contract are available for other host adapters.
 
 The `strike` surface currently speaks: state snapshots (`hp`, `ammo`,

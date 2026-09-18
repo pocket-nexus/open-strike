@@ -7,18 +7,29 @@ pub enum ShotStyle {
     #[default]
     Flame,
     Beam,
+    Orb,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ViewMotion {
+    #[default]
+    Rifle,
+    Staff,
+    Throw,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Presentation {
     pub muzzle: Vec3,
     pub shot: ShotStyle,
+    pub motion: ViewMotion,
 }
 impl Default for Presentation {
     fn default() -> Self {
         Self {
             muzzle: crate::weapon::MUZZLE_LOCAL,
             shot: ShotStyle::Flame,
+            motion: ViewMotion::Rifle,
         }
     }
 }

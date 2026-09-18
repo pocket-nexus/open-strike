@@ -104,8 +104,46 @@ fn main() {
         let effect = match v["effects"].as_str() {
             Some("flame") => "Flame",
             Some("beam") => "Beam",
+            Some("orb") => "Orb",
             _ => panic!("unknown effect profile"),
         };
+        let motion = match v["viewMotion"].as_str() {
+            None if v["viewMotion"].is_null() => "Rifle",
+            Some("rifle") => "Rifle",
+            Some("staff") => "Staff",
+            Some("throw") => "Throw",
+            _ => panic!("unknown view motion"),
+        };
+        let mut projectile = "None".to_string();
+        let mut projectile_mesh = "None".to_string();
+        if !v["projectile"].is_null() {
+            let spec = &v["projectile"];
+            for (key, low, high) in [
+                ("speed", 100., 2000.),
+                ("gravity", 0., 1200.),
+                ("lift", 0., 300.),
+                ("radius", 0.5, 8.),
+                ("lifetime", 0.1, 5.),
+            ] {
+                number(spec, key, low, high, false);
+            }
+            let fields = ["speed", "gravity", "lift", "radius", "lifetime"]
+                .map(|key| format!("{key}:{}f32", spec[key].as_f64().unwrap()))
+                .join(",");
+            projectile = format!("Some(ProjectileConfig{{{fields}}})");
+            let mesh_path = text(spec, "mesh", 256);
+            let bytes = read(&path.parent().unwrap().join(mesh_path));
+            viewmodel::validate(&bytes).expect("invalid projectile mesh");
+            payload += bytes.len();
+            fs::write(out.join(format!("projectile-{index}.opvm")), bytes).unwrap();
+            projectile_mesh = format!(
+                "Some(include_bytes!(concat!(env!(\"OUT_DIR\"),\"/projectile-{index}.opvm\")))"
+            );
+        }
+        assert!(
+            (effect == "Orb") == (projectile != "None"),
+            "orb effects require ballistic delivery and vice versa"
+        );
         assert!(
             v["character"].is_null() || v["character"].is_string(),
             "invalid character path"
@@ -133,7 +171,7 @@ fn main() {
             "mod bundle exceeds 8 MiB baked resource budget"
         );
         packs += &format!(
-            "ModPack{{id:{id:?},character:include_bytes!(concat!(env!(\"OUT_DIR\"),\"/character-{index}.opch\")),viewmodel:{mesh},effects:ShotStyle::{effect}}},\n"
+            "ModPack{{id:{id:?},character:include_bytes!(concat!(env!(\"OUT_DIR\"),\"/character-{index}.opch\")),viewmodel:{mesh},effects:ShotStyle::{effect},motion:ViewMotion::{motion},projectile:{projectile},projectile_mesh:{projectile_mesh}}},\n"
         );
         metadata.push(json!({"id":id,"title":v["title"],"description":v["description"],"weapon":v["weapon"],"bots":v["bots"],"hud":v["hud"]}));
     }

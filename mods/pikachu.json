@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "id": "pikachu",
+  "title": "Pikachu",
+  "description": "Poke Balls / 1 opponent",
+  "character": "character.opch",
+  "viewmodel": "viewmodel.opvm",
+  "effects": "orb",
+  "viewMotion": "throw",
+  "projectile": {
+    "mesh": "ball.opvm",
+    "speed": 520,
+    "gravity": 320,
+    "lift": 65,
+    "radius": 3.2,
+    "lifetime": 3
+  },
+  "weapon": {
+    "magSize": 6,
+    "reserve": 60,
+    "fireInterval": 0.52,
+    "reloadTime": 1.8,
+    "damageBody": 40,
+    "damageHead": 100
+  },
+  "bots": {
+    "count": 1,
+    "speed": 160,
+    "attackInterval": 1.8,
+    "damageMin": 8,
+    "damageMax": 14
+  },
+  "hud": {
+    "reload": "RESTOCKING BALLS",
+    "weapon": "POKE BALL"
+  }
+}

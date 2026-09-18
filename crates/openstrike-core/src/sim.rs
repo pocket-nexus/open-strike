@@ -152,6 +152,8 @@ pub struct StrikeSim {
     pub weapon: Weapon,
     pub effects: Effects,
     pub presentation: crate::presentation::Presentation,
+    pub projectile_config: Option<crate::projectile::Config>,
+    pub projectiles: crate::projectile::Projectiles,
     pub rng: Rng,
     pub phase: Phase,
     pub score: Score,
@@ -184,6 +186,8 @@ impl StrikeSim {
             weapon: Weapon::default(),
             effects: Effects::default(),
             presentation: crate::presentation::Presentation::default(),
+            projectile_config: None,
+            projectiles: crate::projectile::Projectiles::default(),
             rng: Rng(0x0DDB1A5E5BAD5EED),
             phase: Phase::Starting,
             score: Score::default(),
@@ -223,6 +227,7 @@ impl StrikeSim {
         self.player.pitch = pitch * 0.25;
         self.weapon.reset();
         self.effects.clear();
+        self.projectiles.list.clear();
         self.spawn_bots(walk_clip);
         self.phase = Phase::Starting;
         self.events.push(GameEvent::RoundReset);
@@ -279,7 +284,18 @@ impl StrikeSim {
     pub fn tick(&mut self, col: &MapCollision, dt: f32, input: &SimInput) {
         self.time += dt;
         self.effects.tick(dt);
+        let was_reloading = self.weapon.reloading();
         self.weapon.tick(dt);
+        if was_reloading
+            && !self.weapon.reloading()
+            && self.presentation.motion == crate::presentation::ViewMotion::Staff
+        {
+            self.effects.spawn_viewmodel_muzzle(
+                self.viewmodel_transform_at(1.0)
+                    .transform_point3(self.presentation.muzzle),
+                0.24,
+            );
+        }
 
         // Round phase is a gate here; countdowns and transitions live in the
         // gameplay mod (JS), which drives them through `strike` commands.
@@ -294,7 +310,10 @@ impl StrikeSim {
             if input.reload {
                 self.weapon.trigger_reload();
             }
-            if input.fire && self.weapon.fire() {
+            if input.fire
+                && (self.projectile_config.is_none() || self.projectiles.available())
+                && self.weapon.fire()
+            {
                 self.fire_shot(col);
             }
         }
@@ -312,13 +331,39 @@ impl StrikeSim {
                 dt,
                 &bot_cfg,
                 &mut self.rng,
-                &mut self.effects,
             );
             if live {
                 if let Some(s) = shot {
-                    incoming += s.damage;
+                    if let Some(config) = self.projectile_config {
+                        self.projectiles.launch(
+                            s.from,
+                            s.target,
+                            crate::projectile::Owner::Bot,
+                            config,
+                            s.damage,
+                            s.damage,
+                        );
+                    } else {
+                        self.effects
+                            .spawn(EffectKind::MuzzleFlash { pos: s.from }, 0.08);
+                        self.effects.spawn(
+                            EffectKind::Tracer {
+                                a: s.from,
+                                b: s.target,
+                            },
+                            0.09,
+                        );
+                        if s.hitscan_hit {
+                            incoming += s.damage;
+                        }
+                    }
                 }
             }
+        }
+        if live {
+            incoming += self.tick_projectiles(col, dt);
+        } else {
+            self.projectiles.list.clear();
         }
         if incoming > 0 && self.player.alive {
             self.player.health -= incoming;
@@ -432,8 +477,27 @@ impl StrikeSim {
 
         // Effects: muzzle flash + tracer + impact.
         let muzzle = self
-            .viewmodel_transform_at(1.0)
+            .viewmodel_pose(1.0, false)
             .transform_point3(self.presentation.muzzle);
+        if let Some(config) = self.projectile_config {
+            // Keep the release point on this side of cover even when the
+            // first-person mesh itself uses the independent viewmodel depth.
+            let release = col.trace(Hull::Point, eye, muzzle);
+            if release.start_solid || release.fraction < 1.0 {
+                self.effects
+                    .spawn(EffectKind::Impact { pos: release.end }, 0.22);
+                return;
+            }
+            self.projectiles.launch(
+                release.end,
+                hit_point,
+                crate::projectile::Owner::Player,
+                config,
+                self.weapon.cfg.damage_body,
+                self.weapon.cfg.damage_head,
+            );
+            return;
+        }
         let beam = self.presentation.shot == crate::presentation::ShotStyle::Beam;
         self.effects
             .spawn_viewmodel_muzzle(muzzle, if beam { 0.18 } else { 0.06 });
@@ -472,6 +536,83 @@ impl StrikeSim {
         self.player.pitch = (self.player.pitch + 0.0045).min(89f32.to_radians());
     }
 
+    /// Sweep each flight segment against the map and living targets. World
+    /// cover wins equal-distance hits; a shot is removed after one contact.
+    fn tick_projectiles(&mut self, col: &MapCollision, dt: f32) -> i32 {
+        use crate::projectile::{Owner, segment_box};
+        let mut incoming = 0;
+        let mut i = 0;
+        while i < self.projectiles.list.len() {
+            let p = &mut self.projectiles.list[i];
+            p.advance(dt.min((p.config.lifetime - p.age).max(0.0)));
+            let world = col.trace(Hull::Point, p.previous, p.position);
+            let mut fraction = if world.start_solid {
+                0.0
+            } else {
+                world.fraction
+            };
+            let mut target = None;
+            let half = BOT_HALF + Vec3::splat(p.config.radius);
+            if p.owner == Owner::Player {
+                for (index, bot) in self.bots.iter().enumerate().filter(|(_, b)| b.alive()) {
+                    if let Some(t) = segment_box(
+                        p.previous,
+                        p.position,
+                        bot.state.pos - half,
+                        bot.state.pos + half,
+                    ) {
+                        if t < fraction {
+                            fraction = t;
+                            target = Some(index);
+                        }
+                    }
+                }
+            } else if self.player.alive {
+                if let Some(t) = segment_box(
+                    p.previous,
+                    p.position,
+                    self.player.state.pos - half,
+                    self.player.state.pos + half,
+                ) {
+                    if t < fraction {
+                        fraction = t;
+                        target = Some(usize::MAX);
+                    }
+                }
+            }
+            if fraction < 1.0 || world.start_solid {
+                let point = p.previous.lerp(p.position, fraction);
+                self.effects.spawn(EffectKind::Impact { pos: point }, 0.22);
+                if let Some(index) = target {
+                    if index == usize::MAX {
+                        incoming += p.damage_body;
+                    } else {
+                        let bot = &mut self.bots[index];
+                        let headshot = point.y > bot.state.pos.y + 22.0;
+                        let damage = if headshot {
+                            p.damage_head
+                        } else {
+                            p.damage_body
+                        };
+                        let fatal = bot.hurt(damage);
+                        self.events.push(GameEvent::Hit {
+                            bot: index,
+                            headshot,
+                            damage,
+                            fatal,
+                        });
+                    }
+                }
+                self.projectiles.list.swap_remove(i);
+            } else if p.age >= p.config.lifetime {
+                self.projectiles.list.swap_remove(i);
+            } else {
+                i += 1;
+            }
+        }
+        incoming
+    }
+
     /// Viewmodel placement: camera-anchored with bob, recoil, and reload dip.
     ///
     /// `alpha` is the render interpolation factor. The gun MUST ride the same
@@ -479,6 +620,9 @@ impl StrikeSim {
     /// makes it jitter against the world at the tick rate whenever the player
     /// moves. Bob and recoil interpolate for the same reason.
     pub fn viewmodel_transform_at(&self, alpha: f32) -> Mat4 {
+        self.viewmodel_pose(alpha, true)
+    }
+    fn viewmodel_pose(&self, alpha: f32, animate_throw: bool) -> Mat4 {
         let p = &self.player;
         let eye = p.eye_interpolated(alpha);
         let speed = sqrtf(p.state.vel.x * p.state.vel.x + p.state.vel.z * p.state.vel.z);
@@ -495,6 +639,49 @@ impl StrikeSim {
         } else {
             0.0
         };
+
+        let camera = Mat4::from_translation(eye)
+            * Mat4::from_rotation_y(p.yaw)
+            * Mat4::from_rotation_x(p.pitch);
+        match self.presentation.motion {
+            crate::presentation::ViewMotion::Staff => {
+                let f = self.reload_frac();
+                let channel = if self.weapon.reloading() {
+                    sinf(f * core::f32::consts::PI)
+                } else {
+                    0.0
+                };
+                return camera
+                    * Mat4::from_translation(Vec3::new(
+                        7.2 + bob_x - 3.8 * channel,
+                        -7.0 + bob_y + 3.8 * channel,
+                        -8.5 + recoil * 1.5,
+                    ))
+                    * Mat4::from_rotation_z(-0.24 * channel)
+                    * Mat4::from_rotation_x(recoil * 0.06 + 0.10 * channel)
+                    * Mat4::from_rotation_y(-0.03 + 0.15 * channel);
+            }
+            crate::presentation::ViewMotion::Throw => {
+                let age = if animate_throw {
+                    self.weapon.shot_age
+                } else {
+                    100.0
+                };
+                let recover = if age < 0.12 {
+                    1.0
+                } else {
+                    (1.0 - (age - 0.12) / 0.34).clamp(0.0, 1.0)
+                };
+                return camera
+                    * Mat4::from_translation(Vec3::new(
+                        8.0 + bob_x + 5.0 * recover,
+                        -7.0 + bob_y - 20.0 * recover - 10.0 * reload,
+                        -8.5 - 4.0 * recover,
+                    ))
+                    * Mat4::from_rotation_x(-0.4 * reload - 0.25 * recover);
+            }
+            crate::presentation::ViewMotion::Rifle => {}
+        }
 
         Mat4::from_translation(eye)
             * Mat4::from_rotation_y(p.yaw)
@@ -529,6 +716,166 @@ pub fn ray_aabb(origin: Vec3, dir: Vec3, min: Vec3, max: Vec3) -> Option<f32> {
 mod mod_tests {
     use super::*;
     use crate::presentation::{Presentation, ShotStyle};
+    use crate::projectile::{Config, MAX_PROJECTILES, Owner};
+
+    fn flight_config(speed: f32) -> Config {
+        Config {
+            speed,
+            gravity: 0.0,
+            lift: 0.0,
+            radius: 3.0,
+            lifetime: 2.0,
+        }
+    }
+    fn flight_map(wall: bool) -> MapCollision {
+        use pocket3d_bsp::{
+            trace::ModelHulls,
+            types::{CONTENTS_EMPTY, CONTENTS_SOLID, ClipNode, Plane},
+        };
+        MapCollision::from_parts(
+            alloc::vec![Plane {
+                normal: Vec3::Z,
+                dist: -50.0
+            }],
+            alloc::vec![ClipNode {
+                plane: 0,
+                children: [CONTENTS_EMPTY, CONTENTS_SOLID]
+            }],
+            alloc::vec![ClipNode {
+                plane: 0,
+                children: [CONTENTS_EMPTY, CONTENTS_SOLID]
+            }],
+            alloc::vec![ModelHulls {
+                headnodes: [if wall { 0 } else { CONTENTS_EMPTY }; 4],
+                origin: Vec3::ZERO
+            }],
+            alloc::vec![],
+        )
+    }
+    fn flight_sim() -> StrikeSim {
+        let mut sim = StrikeSim::new(Vec3::ZERO, 0.0, Vec::new(), 0);
+        sim.bots.push(Bot::spawn(Vec3::new(0.0, 0.0, -100.0), 0.0));
+        sim.phase = Phase::Live;
+        sim
+    }
+    #[test]
+    fn thrown_shots_hit_on_arrival_and_targets_can_dodge() {
+        let map = flight_map(false);
+        for dodge in [false, true] {
+            let mut sim = flight_sim();
+            sim.projectiles.launch(
+                Vec3::ZERO,
+                sim.bots[0].state.pos,
+                Owner::Player,
+                flight_config(120.0),
+                40,
+                100,
+            );
+            for _ in 0..10 {
+                sim.tick_projectiles(&map, 1.0 / 60.0);
+            }
+            assert_eq!(sim.bots[0].health, 100);
+            assert!(sim.events.is_empty());
+            if dodge {
+                sim.bots[0].state.pos.x = 100.0;
+            }
+            for _ in 0..70 {
+                sim.tick_projectiles(&map, 1.0 / 60.0);
+            }
+            assert_eq!(sim.bots[0].health, if dodge { 100 } else { 60 });
+            assert_eq!(sim.events.len(), usize::from(!dodge));
+        }
+    }
+    #[test]
+    fn swept_projectiles_respect_cover_and_do_not_tunnel() {
+        for wall in [false, true] {
+            let mut sim = flight_sim();
+            sim.projectiles.launch(
+                Vec3::ZERO,
+                sim.bots[0].state.pos,
+                Owner::Player,
+                flight_config(12000.0),
+                40,
+                100,
+            );
+            sim.tick_projectiles(&flight_map(wall), 1.0 / 60.0);
+            assert_eq!(sim.bots[0].health, if wall { 100 } else { 60 });
+            assert!(sim.projectiles.list.is_empty());
+        }
+    }
+    #[test]
+    fn bot_projectiles_obey_the_same_cover_and_contact_law() {
+        for wall in [false, true] {
+            let mut sim = flight_sim();
+            sim.player.state.pos = Vec3::new(0.0, 0.0, -100.0);
+            sim.projectiles.launch(
+                Vec3::ZERO,
+                sim.player.state.pos,
+                Owner::Bot,
+                flight_config(12000.0),
+                9,
+                9,
+            );
+            assert_eq!(
+                sim.tick_projectiles(&flight_map(wall), 1.0 / 60.0),
+                if wall { 0 } else { 9 }
+            );
+            assert_eq!(sim.tick_projectiles(&flight_map(wall), 1.0 / 60.0), 0);
+        }
+    }
+    #[test]
+    fn flight_count_lifetime_round_reset_and_gravity_are_bounded() {
+        let mut sim = flight_sim();
+        let mut cfg = flight_config(200.0);
+        cfg.gravity = 320.0;
+        for _ in 0..MAX_PROJECTILES {
+            assert!(
+                sim.projectiles
+                    .launch(Vec3::ZERO, Vec3::X, Owner::Player, cfg, 10, 10)
+            );
+        }
+        let capacity = sim.projectiles.list.capacity();
+        assert!(
+            !sim.projectiles
+                .launch(Vec3::ZERO, Vec3::X, Owner::Player, cfg, 10, 10)
+        );
+        sim.tick_projectiles(&flight_map(false), 0.5);
+        let p = &sim.projectiles.list[0];
+        assert!((p.position.x - 100.0).abs() < 0.001);
+        assert!((p.position.y + 40.0).abs() < 0.001);
+        for _ in 0..4 {
+            sim.tick_projectiles(&flight_map(false), 0.5);
+        }
+        assert!(sim.projectiles.list.is_empty());
+        assert_eq!(sim.projectiles.list.capacity(), capacity);
+        sim.projectiles
+            .launch(Vec3::ZERO, Vec3::X, Owner::Player, cfg, 10, 10);
+        sim.reset_round(0);
+        assert!(sim.projectiles.list.is_empty());
+    }
+    #[test]
+    fn staff_recharge_stays_visible_and_returns_to_the_hold_pose() {
+        let mut sim = flight_sim();
+        sim.presentation.motion = crate::presentation::ViewMotion::Staff;
+        let held = sim.viewmodel_transform_at(1.0);
+        sim.weapon.ammo = 1;
+        sim.weapon.trigger_reload();
+        sim.weapon.reload_left = sim.weapon.cfg.reload_time / 2.0;
+        let raised = sim.viewmodel_transform_at(1.0);
+        assert!(raised.w_axis.y > held.w_axis.y + 3.0);
+        sim.weapon.reload_left = 0.0;
+        assert_eq!(sim.viewmodel_transform_at(1.0), held);
+        sim.presentation.motion = crate::presentation::ViewMotion::Throw;
+        let origin = sim
+            .viewmodel_pose(1.0, false)
+            .transform_point3(Vec3::new(0.0, 2.0, -13.0));
+        sim.weapon.shot_age = 0.0;
+        assert_eq!(
+            sim.viewmodel_pose(1.0, false)
+                .transform_point3(Vec3::new(0.0, 2.0, -13.0)),
+            origin
+        );
+    }
     #[test]
     fn menu_configuration_is_bounded_and_last_command_wins() {
         let mut pending = Vec::new();
@@ -557,6 +904,7 @@ mod mod_tests {
         sim.presentation = Presentation {
             muzzle: Vec3::new(0., 12., -29.3),
             shot: ShotStyle::Beam,
+            ..Default::default()
         };
         for command in pending {
             sim.apply(command, 0);
@@ -587,6 +935,7 @@ mod mod_tests {
         magic.presentation = Presentation {
             muzzle: Vec3::new(0., 12., -29.3),
             shot: ShotStyle::Beam,
+            ..Default::default()
         };
         gun.fire_shot(&col);
         magic.fire_shot(&col);

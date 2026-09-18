@@ -24,5 +24,6 @@
   "hud": {
     "reload": "RESTORING MANA",
     "weapon": "ZOLTRAAK"
-  }
+  },
+  "viewMotion": "staff"
 }

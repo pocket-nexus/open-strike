@@ -122,6 +122,37 @@ pub fn build_viewmodel(pack: &openstrike_mods::ModPack) -> Vec<ColorVert> {
     out
 }
 
+pub fn build_projectile(pack: &openstrike_mods::ModPack) -> Vec<ColorVert> {
+    pack.projectile_mesh()
+        .map(|mesh| {
+            (0..mesh.len())
+                .map(|i| {
+                    let (p, color) = mesh.vertex(i);
+                    ColorVert {
+                        x: p.x,
+                        y: p.y,
+                        z: p.z,
+                        color,
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub unsafe fn draw_projectiles(pool: &mut FramePool, mesh: &[ColorVert], sim: &StrikeSim) {
+    if mesh.is_empty() {
+        return;
+    }
+    for shot in &sim.projectiles.list {
+        let model = Mat4::from_translation(shot.position)
+            * Mat4::from_rotation_x(shot.age * 10.0)
+            * Mat4::from_rotation_y(shot.age * 3.0)
+            * Mat4::from_scale(Vec3::splat(shot.config.radius));
+        draw_color_tris(pool, mesh, model);
+    }
+}
+
 /// Immutable adjacent pose pairs shared by every bot. Both formats use GE
 /// morphing; the original color-only officer keeps its smaller cache.
 enum PoseCache {
@@ -354,7 +385,7 @@ impl EffectRenderer {
                 } else {
                     muzzle::emit(effect.age, effect.ttl, effect.variant, &mut emit);
                 }
-            } else if sim.presentation.shot == openstrike_core::presentation::ShotStyle::Beam {
+            } else if sim.presentation.shot != openstrike_core::presentation::ShotStyle::Flame {
                 match effect.kind {
                     EffectKind::Tracer { a, b } => {
                         let a = if effect.viewmodel {
@@ -371,7 +402,13 @@ impl EffectRenderer {
                         openstrike_core::energy::focus(effect.age, effect.ttl, |v| {
                             self.world.push(effect_vertex(
                                 pos + right * v.position.x + up * v.position.y,
-                                v.color,
+                                if sim.presentation.shot
+                                    == openstrike_core::presentation::ShotStyle::Orb
+                                {
+                                    [1.0, 0.84, 0.30, v.color[3]]
+                                } else {
+                                    v.color
+                                },
                             ))
                         });
                     }
@@ -380,6 +417,21 @@ impl EffectRenderer {
             } else {
                 effect.emit(&mut self.sprites, &mut self.beams);
             }
+        }
+        if sim.weapon.reloading()
+            && sim.presentation.motion == openstrike_core::presentation::ViewMotion::Staff
+        {
+            let progress = sim.reload_frac();
+            let angle = progress * core::f32::consts::TAU;
+            let rotation = Mat4::from_rotation_z(angle);
+            openstrike_core::energy::focus(0.0, 1.0, |v| {
+                let p = sim.presentation.muzzle
+                    + Vec3::Z * 5.0
+                    + rotation.transform_vector3(v.position * (1.10 + 0.60 * progress));
+                let mut color = v.color;
+                color[3] *= (progress * 8.0).min(1.0) * (0.65 + 0.35 * progress);
+                self.viewmodel.push(effect_vertex(p, color));
+            });
         }
         let mut quad = |a: Vec3, b: Vec3, c: Vec3, d: Vec3, color: [f32; 4]| {
             for p in [a, b, c, a, c, d] {
@@ -439,7 +491,10 @@ pub unsafe fn draw_viewmodel(
     sim: &StrikeSim,
     effects: &EffectRenderer,
 ) {
-    if !sim.player.alive {
+    if !sim.player.alive
+        || (sim.presentation.motion == openstrike_core::presentation::ViewMotion::Throw
+            && sim.weapon.shot_age < 0.12)
+    {
         return;
     }
     clear_depth_for_viewmodel();

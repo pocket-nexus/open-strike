@@ -38,6 +38,7 @@ pub struct Weapon {
     pub ammo: u32,
     pub reserve: u32,
     pub cooldown: f32,
+    pub shot_age: f32,
     pub reload_left: f32,
     /// 0..1 visual recoil, decays.
     pub recoil: f32,
@@ -59,6 +60,7 @@ impl Weapon {
             reserve: cfg.reserve,
             cfg,
             cooldown: 0.0,
+            shot_age: 100.0,
             reload_left: 0.0,
             recoil: 0.0,
             prev_recoil: 0.0,
@@ -75,6 +77,7 @@ impl Weapon {
 
     pub fn tick(&mut self, dt: f32) {
         self.cooldown -= dt;
+        self.shot_age += dt;
         self.prev_recoil = self.recoil;
         self.recoil = (self.recoil - dt * 3.0).max(0.0);
         if self.reload_left > 0.0 {
@@ -100,6 +103,7 @@ impl Weapon {
             return false;
         }
         self.ammo -= 1;
+        self.shot_age = 0.0;
         self.cooldown = self.cfg.fire_interval;
         self.recoil = (self.recoil + 0.35).min(1.0);
         true
@@ -257,11 +261,23 @@ pub fn rifle_boxes() -> [RifleBox; 10] {
         b(Vec3::new(-1.3, -2.0, -16.0), Vec3::new(1.3, 1.6, 4.0), 0),
         // Barrel + muzzle.
         b(Vec3::new(-0.45, 0.1, -30.0), Vec3::new(0.45, 1.0, -16.0), 1),
-        b(Vec3::new(-0.65, -0.05, -32.0), Vec3::new(0.65, 1.15, -30.0), 4),
+        b(
+            Vec3::new(-0.65, -0.05, -32.0),
+            Vec3::new(0.65, 1.15, -30.0),
+            4,
+        ),
         // Wood handguard under the barrel.
-        b(Vec3::new(-0.95, -1.3, -26.0), Vec3::new(0.95, 0.1, -16.0), 2),
+        b(
+            Vec3::new(-0.95, -1.3, -26.0),
+            Vec3::new(0.95, 0.1, -16.0),
+            2,
+        ),
         // Magazine (slightly raked).
-        b(Vec3::new(-0.95, -6.4, -10.5), Vec3::new(0.95, -2.0, -6.0), 3),
+        b(
+            Vec3::new(-0.95, -6.4, -10.5),
+            Vec3::new(0.95, -2.0, -6.0),
+            3,
+        ),
         // Pistol grip.
         b(Vec3::new(-0.85, -5.2, -1.2), Vec3::new(0.85, -2.0, 1.6), 4),
         // Stock.

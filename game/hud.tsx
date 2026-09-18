@@ -49,6 +49,7 @@ type Ref = NonNullable<Parameters<typeof hot.text>[0]>;
 export default function Hud() {
   const s0 = strike.state();
   const mod = strike.mod();
+  const lowAmmo = Math.max(1, Math.floor(mod.weapon.magSize / 6));
   // SELECT opens/closes the quit dialog (BTN.SELECT = 0x0001). The mount is
   // structural but user-initiated — never on the combat hot path.
   const [dialog, setDialog] = createSignal(false);
@@ -217,7 +218,7 @@ export default function Hud() {
       lAmmo = s.ammo;
       hot.text(ammoText, s.ammo);
       const color = s.ammo === 0 ? RED_N : INK_N;
-      const barColor = s.ammo <= 5 ? RED_N : LIME_N;
+      const barColor = s.ammo <= lowAmmo ? RED_N : LIME_N;
       if (color !== lAmmoColor) {
         lAmmoColor = color;
         paint(P.ammoText, color);
