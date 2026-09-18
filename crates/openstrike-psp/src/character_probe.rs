@@ -20,6 +20,11 @@ pub fn stage(sim: &mut StrikeSim, frame: u32) {
         1 => 3,
         _ => 6,
     };
+    #[cfg(feature = "proximity-bench")]
+    let count = {
+        let _ = count;
+        1
+    };
     while sim.bots.len() < count {
         sim.bots.push(Bot::spawn(sim.player.state.pos, 0.0));
     }
@@ -29,6 +34,11 @@ pub fn stage(sim: &mut StrikeSim, frame: u32) {
     let forward = sim.player.forward_flat();
     let right = Vec3::new(-forward.z, 0.0, forward.x);
     let clip = ActorClip::ALL[((frame / 180) % 7) as usize];
+    #[cfg(feature = "proximity-bench")]
+    let clip = {
+        let _ = clip;
+        ActorClip::Walk
+    };
     let time = (frame % 180) as f32 / 60.0;
     for (i, bot) in sim.bots.iter_mut().enumerate() {
         let col = i % 3;
@@ -56,6 +66,15 @@ pub fn stage(sim: &mut StrikeSim, frame: u32) {
                 } + row as f32 * 70.0)
             + right * shift * 45.0;
         bot.prev_pos = bot.state.pos;
+        #[cfg(feature = "proximity-bench")]
+        {
+            let distance = env!("OPENSTRIKE_PSP_PROBE_DISTANCE")
+                .parse::<f32>()
+                .unwrap_or(36.0)
+                .clamp(32.0, 400.0);
+            bot.state.pos = sim.player.state.pos + forward * distance;
+            bot.prev_pos = bot.state.pos;
+        }
         bot.yaw = sim.player.yaw + core::f32::consts::PI;
         bot.health = 100;
         bot.brain = BotState::Patrol;

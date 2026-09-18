@@ -5,6 +5,8 @@
 //   bun scripts/psp.ts --map de_inferno --bots 4
 //   bun scripts/psp.ts --cooked-maps dist/maps --bench
 //   bun scripts/psp.ts --character out/character.opch --cooked-maps dist/maps
+//   bun scripts/psp.ts -r --proximity-bench # one walking actor at 36 units
+//   bun scripts/psp.ts -r --approach-bench  # approach/retreat under real bot fire
 //   OPENSTRIKE_MAPS=~/cs bun scripts/psp.ts
 //
 // Maps root (maps/*.bsp + support/*.wad) comes from OPENSTRIKE_MAPS or the
@@ -45,7 +47,9 @@ if (argv.includes("--bench")) features.push("bench");
 if (argv.includes("--bench-spikes")) features.push("bench-spikes");
 if (argv.includes("--idle-bench")) features.push("idle-bench");
 if (argv.includes("--character-bench")) features.push("character-bench");
+if (argv.includes("--proximity-bench")) features.push("proximity-bench");
 if (argv.includes("--combat-bench")) features.push("combat-bench");
+if (argv.includes("--approach-bench")) features.push("approach-bench");
 if (argv.includes("--motion-bench")) features.push("motion-bench");
 
 const mapsRoot = process.env.OPENSTRIKE_MAPS ?? `${home}/Downloads/cs-maps-20260705-1836`;
@@ -108,6 +112,7 @@ const env = {
   ...nativePocketContract(pocketPlan),
   OPENSTRIKE_CHARACTER_ASSET: characterAsset,
   OPENSTRIKE_PSP_CHARACTER_START: process.env.OPENSTRIKE_PSP_CHARACTER_START ?? "",
+  OPENSTRIKE_PSP_PROBE_DISTANCE: process.env.OPENSTRIKE_PSP_PROBE_DISTANCE ?? "",
   // newlib (QuickJS needs -lc) and rust-psp both define memcpy/_exit/truncf
   // with identical semantics; whichever the linker sees first wins.
   RUSTFLAGS:

@@ -12,7 +12,7 @@ import { animate, jump, createJumpBatch, type JumpBatch } from "@pocketjs/framew
 import { pushFocusScope } from "@pocketjs/framework/input";
 import { onButtonPress, onFrame } from "@pocketjs/framework/lifecycle";
 import { platform } from "@pocketjs/framework/platform";
-import { strike } from "./sdk.ts";
+import { strike, profileHud } from "./sdk.ts";
 import { ROUND_FREEZE, ROUND_END_PAUSE, phaseAge } from "./rules.ts";
 
 // Palette (military night-ops): lime reticle, amber warnings, blood red.
@@ -158,7 +158,7 @@ export default function Hud() {
   let lHpColor = 0;
   let lAmmoColor = 0;
   let lAmmoBarColor = 0;
-  onFrame(() => {
+  onFrame(profileHud(() => {
     const s = strike.state();
 
     if (s.phase !== lPhase) {
@@ -281,7 +281,7 @@ export default function Hud() {
       paintBatch.commit();
       paintDirty = false;
     }
-  });
+  }));
 
   return (
     <View class="w-full h-full">

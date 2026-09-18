@@ -46,6 +46,8 @@ export interface BotsConfig {
 }
 
 export interface NativeStrike {
+  /** Optional benchmark hook; absent from ordinary builds. */
+  __hudMark?(end: number): void;
   /** Cooked maps available to loadMap (index-aligned), host-injected. */
   maps?: string[];
   loadMap?(index: number): void;
@@ -85,14 +87,34 @@ type Handler = (e: StrikeEvent) => void;
 type TickHandler = (s: StrikeState) => void;
 const handlers = new Map<string, Set<Handler>>();
 const tickHandlers = new Set<TickHandler>();
+let tickSnapshot: TickHandler[] = [];
+let ticksChanged = false;
+
+/** Measure the HUD callback only when a profiling host installs the hook. */
+export function profileHud(callback: () => void): () => void {
+  const mark = native!.__hudMark;
+  if (!mark) return callback;
+  return () => {
+    mark(0);
+    try { callback(); } finally { mark(1); }
+  };
+}
 
 native.__dispatch = (state, events) => {
   current = state;
-  for (const e of events) {
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i];
     const set = handlers.get(e.type);
     if (set) for (const h of [...set]) h(e);
   }
-  for (const h of [...tickHandlers]) h(state);
+  // Rebuild only on subscription changes. Retain a local snapshot so a
+  // callback can subscribe/unsubscribe without changing this dispatch.
+  if (ticksChanged) {
+    tickSnapshot = [...tickHandlers];
+    ticksChanged = false;
+  }
+  const ticks = tickSnapshot;
+  for (let i = 0; i < ticks.length; i++) ticks[i](state);
 };
 
 export const strike = {
@@ -110,7 +132,10 @@ export const strike = {
   /** Runs once per tick, after events, with the fresh state. */
   onTick(fn: TickHandler): () => void {
     tickHandlers.add(fn);
-    return () => tickHandlers.delete(fn);
+    ticksChanged = true;
+    return () => {
+      if (tickHandlers.delete(fn)) ticksChanged = true;
+    };
   },
 
   // ---- intent (queued host-side, applied after this guest turn) ----------

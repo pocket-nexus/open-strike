@@ -6,6 +6,8 @@ on:
       - "crates/openstrike-core/**"
       - "crates/openstrike-character/**"
       - "crates/openstrike-psp/**"
+      - "game/sdk.ts"
+      - "test/strike-sdk.test.ts"
       - "vendor/pocketjs"
       - "Cargo.lock"
       - ".github/workflows/simulation.yml"
@@ -15,6 +17,8 @@ on:
       - "crates/openstrike-core/**"
       - "crates/openstrike-character/**"
       - "crates/openstrike-psp/**"
+      - "game/sdk.ts"
+      - "test/strike-sdk.test.ts"
       - "vendor/pocketjs"
       - "Cargo.lock"
       - ".github/workflows/simulation.yml"
@@ -32,6 +36,8 @@ jobs:
         with:
           submodules: true
       - uses: dtolnay/rust-toolchain@stable
+      - uses: oven-sh/setup-bun@v2
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --locked -p openstrike-core -p openstrike-character
       - run: cargo check --locked -p openstrike-core --no-default-features --features libm
+      - run: bun test test/strike-sdk.test.ts

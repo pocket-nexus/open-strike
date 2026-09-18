@@ -39,8 +39,12 @@ bench = []
 bench-spikes = ["bench"]
 # Repeatable actor count/clip scene, never enabled in ordinary builds.
 character-bench = ["bench"]
+# One walking actor at a fixed distance, isolating close-range rendering cost.
+proximity-bench = ["character-bench"]
 # Real simulation, weapon traces and JS round rules with scripted opponents/input.
 combat-bench = ["bench"]
+# Real movement approaches/retreats while the bot attacks; no fake hit events.
+approach-bench = ["combat-bench"]
 
 # Real pad mapping, wall-clock simulation and moving camera on hardware.
 motion-bench = ["bench"]

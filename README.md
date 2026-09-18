@@ -313,6 +313,10 @@ For repeatable hardware checks, build with `--idle-bench` (fixed camera, no pad 
 (combat and round transitions). `--bench` records manual play. These modes write `OpenStrike-bench.jsonl`
 with frame timing, simulation tick counts and submitted index counts. Use
 `--map de_inferno --cooked-maps dist/maps --release` with the selected mode.
+`--proximity-bench` stages one walking actor at a fixed camera-relative distance
+(`OPENSTRIKE_PSP_PROBE_DISTANCE`, default 36 units); `--approach-bench` moves
+toward and away from an opponent while collision, AI, damage and round rules run.
+The HUD callback, DrawList build and UI GE submission have separate timing fields.
 Rebuild without a benchmark flag for interactive acceptance.
 
 ## PS Vita

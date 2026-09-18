@@ -45,6 +45,7 @@ fn main() {
         "OPENSTRIKE_PSP_CAP_N",
         "OPENSTRIKE_PSP_AUTOSTART",
         "OPENSTRIKE_PSP_CHARACTER_START",
+        "OPENSTRIKE_PSP_PROBE_DISTANCE",
     ] {
         println!("cargo:rerun-if-env-changed={var}");
         let v = env::var(var).unwrap_or_default();

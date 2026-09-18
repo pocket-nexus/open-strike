@@ -177,9 +177,8 @@ impl CharacterRenderer {
         assert!(pairs.bytes() <= openstrike_character::MAX_CACHE_BYTES);
         let texture = openstrike_character::texture().map(|(width, bytes)| CharacterTexture {
             width,
-            blocks: bytes
-                .chunks_exact(16)
-                .map(|b| TextureBlock(b.try_into().unwrap()))
+            blocks: (0..bytes.len() / 16)
+                .map(|i| TextureBlock(openstrike_character::swizzled_rgba_block(bytes, width, i)))
                 .collect(),
         });
         let mut indices = alloc::vec![0; openstrike_character::index_count()];
@@ -220,7 +219,7 @@ impl CharacterRenderer {
         self.visible = 0;
         let uv = if let Some(t) = &self.texture {
             sys::sceGuEnable(GuState::Texture2D);
-            sys::sceGuTexMode(TexturePixelFormat::Psm8888, 0, 0, 0);
+            sys::sceGuTexMode(TexturePixelFormat::Psm8888, 0, 0, 1);
             sys::sceGuTexImage(
                 MipmapLevel::None,
                 t.width as i32,

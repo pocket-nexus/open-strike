@@ -16,10 +16,10 @@ use pocketjs_psp::ffi::{add_fn, arg_i32};
 // Symbols the vendored libquickjs-sys omits (provided by the linked QuickJS
 // C library — the established local-extern pattern).
 extern "C" {
+    fn JS_NewAtom(ctx: *mut JSContext, name: *const core::ffi::c_char) -> JSAtom;
     fn JS_NewStringLen(ctx: *mut JSContext, s: *const u8, len: usize) -> JSValue;
     fn JS_NewArray(ctx: *mut JSContext) -> JSValue;
-    fn JS_SetPropertyUint32(ctx: *mut JSContext, this_obj: JSValue, idx: u32, val: JSValue)
-    -> i32;
+    fn JS_SetPropertyUint32(ctx: *mut JSContext, this_obj: JSValue, idx: u32, val: JSValue) -> i32;
 }
 
 /// Commands queued by ops during the guest turn (single-threaded host).
@@ -110,7 +110,11 @@ unsafe fn get_f32(ctx: *mut JSContext, obj: JSValue, key: &'static [u8], default
     let mut out = 0f64;
     let bad = JS_ToFloat64(ctx, &mut out, v) != 0;
     JS_FreeValue(ctx, v);
-    if bad { default } else { out as f32 }
+    if bad {
+        default
+    } else {
+        out as f32
+    }
 }
 
 unsafe fn get_i32(ctx: *mut JSContext, obj: JSValue, key: &'static [u8], default: i32) -> i32 {
@@ -235,12 +239,13 @@ unsafe extern "C" fn js_configure_bots(
 }
 
 /// Install `globalThis.strike` (intent ops; the SDK adds `__dispatch`).
-pub unsafe fn register(
-    ctx: *mut JSContext,
-    global: JSValue,
-    maps: &[alloc::string::String],
-) {
+pub unsafe fn register(ctx: *mut JSContext, global: JSValue, maps: &[alloc::string::String]) {
     let obj = JS_NewObject(ctx);
+    for (i, name) in STATE_NAMES.iter().enumerate() {
+        STATE_ATOMS[i] = JS_NewAtom(ctx, name.as_ptr() as *const _);
+    }
+    #[cfg(feature = "bench")]
+    add_fn(ctx, obj, b"__hudMark\0", js_hud_mark, 1);
     add_fn(ctx, obj, b"setPhase\0", js_set_phase, 1);
     add_fn(ctx, obj, b"resetRound\0", js_reset_round, 0);
     add_fn(ctx, obj, b"addWin\0", js_add_win, 0);
@@ -260,23 +265,81 @@ pub unsafe fn register(
     JS_SetPropertyStr(ctx, global, b"strike\0".as_ptr() as *const _, obj);
 }
 
+// State snapshots keep their public shape and allocation semantics. Intern
+// their fixed property names once per host context instead of per tick.
+const STATE_NAMES: [&[u8]; 13] = [
+    b"time\0",
+    b"phase\0",
+    b"hp\0",
+    b"alive\0",
+    b"ammo\0",
+    b"reserve\0",
+    b"reloading\0",
+    b"reloadFrac\0",
+    b"aliveBots\0",
+    b"totalBots\0",
+    b"wins\0",
+    b"losses\0",
+    b"speed\0",
+];
+static mut STATE_ATOMS: [JSAtom; 13] = [0; 13];
+
+unsafe fn set_state(ctx: *mut JSContext, obj: JSValue, field: usize, value: JSValue) {
+    JS_SetProperty(ctx, obj, STATE_ATOMS[field], value);
+}
+
+#[cfg(feature = "bench")]
+static mut HUD_START: u64 = 0;
+#[cfg(feature = "bench")]
+static mut HUD_TIME: u64 = 0;
+#[cfg(feature = "bench")]
+unsafe extern "C" fn js_hud_mark(
+    ctx: *mut JSContext,
+    _this: JSValue,
+    argc: i32,
+    argv: *mut JSValue,
+) -> JSValue {
+    let now = psp::sys::sceKernelGetSystemTimeWide() as u64;
+    if arg_i32(ctx, argc, argv, 0) == 0 {
+        HUD_START = now;
+    } else {
+        HUD_TIME += now.saturating_sub(HUD_START);
+    }
+    JS_UNDEFINED
+}
+#[cfg(feature = "bench")]
+pub unsafe fn take_hud_time() -> u64 {
+    let elapsed = HUD_TIME;
+    HUD_TIME = 0;
+    elapsed
+}
+
 // ---- state/events → guest ---------------------------------------------------
 
 unsafe fn build_state(ctx: *mut JSContext, sim: &StrikeSim) -> JSValue {
     let o = JS_NewObject(ctx);
-    set_val(ctx, o, b"time\0", JS_NewFloat64(ctx, sim.time as f64));
-    set_str(ctx, o, b"phase\0", phase_name(sim.phase));
-    set_val(ctx, o, b"hp\0", JS_NewInt32(ctx, sim.player.health));
-    set_val(ctx, o, b"alive\0", JS_NewBool(ctx, sim.player.alive));
-    set_val(ctx, o, b"ammo\0", JS_NewInt32(ctx, sim.weapon.ammo as i32));
-    set_val(ctx, o, b"reserve\0", JS_NewInt32(ctx, sim.weapon.reserve as i32));
-    set_val(ctx, o, b"reloading\0", JS_NewBool(ctx, sim.weapon.reloading()));
-    set_val(ctx, o, b"reloadFrac\0", JS_NewFloat64(ctx, sim.reload_frac() as f64));
-    set_val(ctx, o, b"aliveBots\0", JS_NewInt32(ctx, sim.alive_bots() as i32));
-    set_val(ctx, o, b"totalBots\0", JS_NewInt32(ctx, sim.bots.len() as i32));
-    set_val(ctx, o, b"wins\0", JS_NewInt32(ctx, sim.score.wins as i32));
-    set_val(ctx, o, b"losses\0", JS_NewInt32(ctx, sim.score.losses as i32));
-    set_val(ctx, o, b"speed\0", JS_NewFloat64(ctx, sim.ground_speed() as f64));
+    set_state(ctx, o, 0, JS_NewFloat64(ctx, sim.time as f64));
+    set_state(
+        ctx,
+        o,
+        1,
+        JS_NewStringLen(
+            ctx,
+            phase_name(sim.phase).as_ptr(),
+            phase_name(sim.phase).len(),
+        ),
+    );
+    set_state(ctx, o, 2, JS_NewInt32(ctx, sim.player.health));
+    set_state(ctx, o, 3, JS_NewBool(ctx, sim.player.alive));
+    set_state(ctx, o, 4, JS_NewInt32(ctx, sim.weapon.ammo as i32));
+    set_state(ctx, o, 5, JS_NewInt32(ctx, sim.weapon.reserve as i32));
+    set_state(ctx, o, 6, JS_NewBool(ctx, sim.weapon.reloading()));
+    set_state(ctx, o, 7, JS_NewFloat64(ctx, sim.reload_frac() as f64));
+    set_state(ctx, o, 8, JS_NewInt32(ctx, sim.alive_bots() as i32));
+    set_state(ctx, o, 9, JS_NewInt32(ctx, sim.bots.len() as i32));
+    set_state(ctx, o, 10, JS_NewInt32(ctx, sim.score.wins as i32));
+    set_state(ctx, o, 11, JS_NewInt32(ctx, sim.score.losses as i32));
+    set_state(ctx, o, 12, JS_NewFloat64(ctx, sim.ground_speed() as f64));
     o
 }
 
@@ -298,7 +361,7 @@ unsafe fn build_event(ctx: *mut JSContext, e: &GameEvent) -> JSValue {
         GameEvent::PlayerDamaged { amount, hp } => {
             set_str(ctx, o, b"type\0", "playerDamaged");
             set_val(ctx, o, b"amount\0", JS_NewInt32(ctx, *amount));
-            set_val(ctx, o, b"hp\0", JS_NewInt32(ctx, *hp));
+            set_state(ctx, o, 2, JS_NewInt32(ctx, *hp));
         }
         GameEvent::PlayerDied => set_str(ctx, o, b"type\0", "playerDied"),
         GameEvent::RoundReset => set_str(ctx, o, b"type\0", "roundReset"),
@@ -318,19 +381,19 @@ pub unsafe fn dispatch_menu(ctx: *mut JSContext, global: JSValue, time: f64) -> 
     let mut ok = true;
     if !JS_IsUndefined(dispatch) {
         let o = JS_NewObject(ctx);
-        set_val(ctx, o, b"time\0", JS_NewFloat64(ctx, time));
-        set_str(ctx, o, b"phase\0", "menu");
-        set_val(ctx, o, b"hp\0", JS_NewInt32(ctx, 100));
-        set_val(ctx, o, b"alive\0", JS_NewBool(ctx, true));
-        set_val(ctx, o, b"ammo\0", JS_NewInt32(ctx, 0));
-        set_val(ctx, o, b"reserve\0", JS_NewInt32(ctx, 0));
-        set_val(ctx, o, b"reloading\0", JS_NewBool(ctx, false));
-        set_val(ctx, o, b"reloadFrac\0", JS_NewFloat64(ctx, 0.0));
-        set_val(ctx, o, b"aliveBots\0", JS_NewInt32(ctx, 0));
-        set_val(ctx, o, b"totalBots\0", JS_NewInt32(ctx, 0));
-        set_val(ctx, o, b"wins\0", JS_NewInt32(ctx, 0));
-        set_val(ctx, o, b"losses\0", JS_NewInt32(ctx, 0));
-        set_val(ctx, o, b"speed\0", JS_NewFloat64(ctx, 0.0));
+        set_state(ctx, o, 0, JS_NewFloat64(ctx, time));
+        set_state(ctx, o, 1, JS_NewStringLen(ctx, b"menu".as_ptr(), 4));
+        set_state(ctx, o, 2, JS_NewInt32(ctx, 100));
+        set_state(ctx, o, 3, JS_NewBool(ctx, true));
+        set_state(ctx, o, 4, JS_NewInt32(ctx, 0));
+        set_state(ctx, o, 5, JS_NewInt32(ctx, 0));
+        set_state(ctx, o, 6, JS_NewBool(ctx, false));
+        set_state(ctx, o, 7, JS_NewFloat64(ctx, 0.0));
+        set_state(ctx, o, 8, JS_NewInt32(ctx, 0));
+        set_state(ctx, o, 9, JS_NewInt32(ctx, 0));
+        set_state(ctx, o, 10, JS_NewInt32(ctx, 0));
+        set_state(ctx, o, 11, JS_NewInt32(ctx, 0));
+        set_state(ctx, o, 12, JS_NewFloat64(ctx, 0.0));
         let batch = JS_NewArray(ctx);
         let mut args = [o, batch];
         let r = JS_Call(ctx, dispatch, strike, 2, args.as_mut_ptr());

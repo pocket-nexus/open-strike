@@ -342,11 +342,18 @@ unsafe fn run() {
             JS_RunGC(rt);
             last_gc_bump = pocketjs_psp::arena::stats().bump_bytes;
         }
+        #[cfg(feature = "bench")]
+        let ui_draw_start = bench_now();
         let ui = ffi::ui();
         let (words_ptr, words_len) = {
             let dl = ui.draw();
             (dl.words.as_ptr(), dl.words.len())
         };
+
+        #[cfg(feature = "bench")]
+        {
+            bench.ui_draw_sum += bench_now() - ui_draw_start;
+        }
 
         // Pipelined present: wait out frame N-1, show it, then record N.
         #[cfg(feature = "bench")]
@@ -416,7 +423,14 @@ unsafe fn run() {
         }
         pocket3d_gu::end_3d();
         // The JSX HUD, unchanged from every other PocketJS host.
+        #[cfg(feature = "bench")]
+        let ui_ge_start = bench_now();
         ge::render_over(ffi::ui(), core::slice::from_raw_parts(words_ptr, words_len));
+        #[cfg(feature = "bench")]
+        {
+            bench.ui_ge_sum += bench_now() - ui_ge_start;
+            bench.hud_script_sum += strike::take_hud_time();
+        }
         sys::sceGuFinish();
 
         #[cfg(feature = "bench")]
@@ -513,6 +527,9 @@ struct Bench {
     /// Breakdown of the frame that set max_work: 4 segments + the
     /// uninstrumented rest (draw recording, input, GE list build).
     max_segs: [u64; 5],
+    hud_script_sum: u64,
+    ui_draw_sum: u64,
+    ui_ge_sum: u64,
     actor_sum: u64,
     actor_max: u64,
     actor_count_sum: u64,
@@ -573,6 +590,9 @@ impl Bench {
             indices_sum: 0,
             seg_sums: [0; 4],
             max_segs: [0; 5],
+            hud_script_sum: 0,
+            ui_draw_sum: 0,
+            ui_ge_sum: 0,
             actor_sum: 0,
             actor_max: 0,
             actor_count_sum: 0,
@@ -743,7 +763,7 @@ impl Bench {
         self.work_times.sort_unstable();
         self.frame_times.sort_unstable();
         let line = alloc::format!(
-            "{{\"window\":{},\"frames\":{},\"sim_ticks\":{},\"map_loads\":{},\"menu_returns\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_indices\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"arena_total_free_bytes\":{},\"js_live_requested_bytes\":{},\"max_segs_us\":[{},{},{},{},{}],\"actor_probe\":{},\"avg_actor_us\":{},\"max_actor_us\":{},\"avg_actors\":{},\"max_actors\":{},\"actor_triangles_each\":{},\"observed_fps_milli\":{},\"p95_frame_us\":{},\"p99_frame_us\":{},\"p95_work_us\":{},\"late_frames\":{},\"input\":{{\"buttons_or\":{},\"analog_frames\":{},\"movement_frames\":{},\"airborne_frames\":{},\"look_frames\":{},\"ammo_min\":{},\"ammo_max\":{},\"reloading_frames\":{}}},\"actor_clip_frames\":[{},{},{},{},{},{},{}],\"combat_probe\":{},\"events\":{{\"hits\":{},\"kills\":{},\"damage\":{},\"deaths\":{},\"resets\":{},\"shots\":{}}},\"reused_vblanks\":{},\"missed_vblanks\":{},\"max_work_frame\":{}}}\n",
+            "{{\"window\":{},\"frames\":{},\"sim_ticks\":{},\"map_loads\":{},\"menu_returns\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_indices\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"arena_total_free_bytes\":{},\"js_live_requested_bytes\":{},\"max_segs_us\":[{},{},{},{},{}],\"actor_probe\":{},\"avg_actor_us\":{},\"max_actor_us\":{},\"avg_actors\":{},\"max_actors\":{},\"actor_triangles_each\":{},\"observed_fps_milli\":{},\"p95_frame_us\":{},\"p99_frame_us\":{},\"p95_work_us\":{},\"late_frames\":{},\"input\":{{\"buttons_or\":{},\"analog_frames\":{},\"movement_frames\":{},\"airborne_frames\":{},\"look_frames\":{},\"ammo_min\":{},\"ammo_max\":{},\"reloading_frames\":{}}},\"actor_clip_frames\":[{},{},{},{},{},{},{}],\"combat_probe\":{},\"events\":{{\"hits\":{},\"kills\":{},\"damage\":{},\"deaths\":{},\"resets\":{},\"shots\":{}}},\"reused_vblanks\":{},\"missed_vblanks\":{},\"avg_hud_script_us\":{},\"avg_ui_draw_us\":{},\"avg_ui_ge_us\":{},\"max_work_frame\":{}}}\n",
             self.window,
             n,
             self.sim_ticks,
@@ -809,6 +829,9 @@ impl Bench {
             self.events[5],
             self.reused_vblanks,
             self.missed_vblanks,
+            self.hud_script_sum / n,
+            self.ui_draw_sum / n,
+            self.ui_ge_sum / n,
             self.max_work_frame,
         );
         for path in [
@@ -840,6 +863,9 @@ impl Bench {
         self.indices_sum = 0;
         self.seg_sums = [0; 4];
         self.max_segs = [0; 5];
+        self.hud_script_sum = 0;
+        self.ui_draw_sum = 0;
+        self.ui_ge_sum = 0;
         self.actor_sum = 0;
         self.actor_max = 0;
         self.actor_count_sum = 0;

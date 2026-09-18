@@ -10,7 +10,11 @@ mod format;
 pub use format::MAX_CACHE_BYTES;
 const DATA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/character.opch"));
 fn header() -> usize {
-    if textured() { 40 } else { 24 }
+    if textured() {
+        40
+    } else {
+        24
+    }
 }
 pub fn textured() -> bool {
     u32_at(4) == 2
@@ -121,6 +125,17 @@ pub fn texture() -> Option<(usize, &'static [u8])> {
     let start = sockets_start() + baked_frame_count() * 12;
     Some((u32_at(24) as usize, &DATA[start..]))
 }
+/// One 16-byte row of a GE 16-byte by 8-row texture tile. Reordering leaves
+/// every RGBA texel intact; the immutable atlas is prepared once at startup.
+pub fn swizzled_rgba_block(rgba: &[u8], width: usize, block: usize) -> [u8; 16] {
+    assert!(width >= 4 && width % 4 == 0 && block < rgba.len() / 16);
+    let row_bytes = width * 4;
+    let tiles_per_row = row_bytes / 16;
+    let tile = block / 8;
+    let row = (tile / tiles_per_row) * 8 + block % 8;
+    let offset = row * row_bytes + (tile % tiles_per_row) * 16;
+    rgba[offset..offset + 16].try_into().unwrap()
+}
 /// The attack starts on the first authored Fire pose. AI/hitscan timing stays
 /// shared; hosts install this local-space origin before simulation ticks.
 pub fn attack_origin() -> Vec3 {
@@ -226,6 +241,28 @@ impl Pose {
 mod tests {
     use super::*;
     extern crate std;
+    #[test]
+    fn swizzled_texture_retains_every_texel_across_tile_boundaries() {
+        for width in [16usize, 32, 128, 256] {
+            let mut source = std::vec![0u8; width * width * 4];
+            for (i, pixel) in source.chunks_exact_mut(4).enumerate() {
+                pixel.copy_from_slice(&(i as u32).to_le_bytes());
+            }
+            let swizzled: std::vec::Vec<u8> = (0..source.len() / 16)
+                .flat_map(|i| swizzled_rgba_block(&source, width, i))
+                .collect();
+            for y in 0..width {
+                for x in 0..width {
+                    let tile = (y / 8) * (width / 4) + x / 4;
+                    let at = tile * 128 + (y % 8) * 16 + (x % 4) * 4;
+                    assert_eq!(
+                        &swizzled[at..at + 4],
+                        &((y * width + x) as u32).to_le_bytes()
+                    );
+                }
+            }
+        }
+    }
     #[test]
     fn authored_asset_stays_within_psp_budget_and_indices_are_valid() {
         assert_eq!(&DATA[..4], b"OPCH");
