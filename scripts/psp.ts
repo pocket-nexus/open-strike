@@ -168,6 +168,8 @@ await $`${toolchain.rustup} run ${toolchain.manifest.rust.toolchain} cargo psp $
 
 const profile = release ? "release" : "debug";
 const ebootDir = `${pspDir}target/mipsel-sony-psp/${profile}`;
+const { verifyPspPrx } = await import("../vendor/pocketjs/tools/psp-prx.ts");
+verifyPspPrx(new Uint8Array(await Bun.file(`${ebootDir}/openstrike-psp.prx`).arrayBuffer()));
 mkdirSync(`${ebootDir}/maps`, { recursive: true });
 for (const f of readdirSync(`${ebootDir}/maps`).filter((f) => f.endsWith(".p3d") && !mapFiles.includes(f))) {
   rmSync(`${ebootDir}/maps/${f}`);
