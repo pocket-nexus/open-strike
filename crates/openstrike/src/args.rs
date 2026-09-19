@@ -101,7 +101,7 @@ impl Args {
     /// Resolve the map argument to a .bsp path.
     pub fn resolve_map_path(&self) -> Result<PathBuf> {
         let name = &self.map;
-        if name.ends_with(".bsp") || name.contains('/') {
+        if name.ends_with(".bsp") || name.ends_with(".p3d") || name.contains('/') {
             let p = PathBuf::from(name);
             if p.exists() {
                 return Ok(p);
@@ -117,10 +117,14 @@ impl Args {
         }
         roots.push(PathBuf::from("assets"));
         roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../assets"));
+        roots.push(PathBuf::from("dist/maps"));
+        roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../dist/maps"));
         for root in &roots {
             for candidate in [
                 root.join("maps").join(format!("{name}.bsp")),
                 root.join(format!("{name}.bsp")),
+                root.join("maps").join(format!("{name}.p3d")),
+                root.join(format!("{name}.p3d")),
             ] {
                 if candidate.exists() {
                     return Ok(candidate);
@@ -128,7 +132,7 @@ impl Args {
             }
         }
         bail!(
-            "could not find {name}.bsp — pass --maps-dir DIR or set OPENSTRIKE_MAPS \
+            "could not find {name}.bsp or {name}.p3d — pass --maps-dir DIR or set OPENSTRIKE_MAPS \
              (expects DIR/maps/*.bsp with DIR/support/*.wad)"
         )
     }
@@ -168,7 +172,7 @@ pub fn find_asset(rel: &str) -> Option<PathBuf> {
 const USAGE: &str = "\
 openstrike [options]
   --maps-dir DIR      directory with maps/*.bsp and support/*.wad
-  --map NAME          map name or .bsp path (default de_dust2)
+  --map NAME          map name, .bsp or .p3d path (default de_dust2)
   --screenshot PATH   render one frame headlessly and save a PNG
   --size WxH          render size (default 1280x720)
   --pos x,y,z         camera position (Y-up units)

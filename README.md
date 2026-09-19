@@ -195,10 +195,18 @@ data). Point the game at a directory containing them:
 Any GoldSrc-era (BSP v30) map works; the eight classic CS maps are the
 tested set. `OPENSTRIKE_MAPS` can replace `--maps-dir` below.
 
+The desktop also reads the existing cooked `.p3d` maps, including their textures,
+collision hulls and spawn points. With `dist/maps/de_dust2.p3d` present, no map
+argument is needed. `--map /path/to/map.p3d` chooses another cooked map.
+The desktop build resolves its own macOS/Linux UI target and passes the resolved
+host ABI and density into Rust; a PSP UI bundle cannot be loaded by this host.
+`OPENSTRIKE_UI_DIST` overrides the matching desktop bundle directory.
+
 ### Play
 
 ```sh
-cargo run --release -p openstrike -- --maps-dir ~/path/to/cs-maps
+bun run build:desktop
+target/release/openstrike --maps-dir ~/path/to/cs-maps
 ```
 
 | Input | Action |
@@ -241,11 +249,11 @@ boot the full QuickJS guest so the *shipped* rules and HUD are what gets
 tested:
 
 ```sh
-cargo run --release -p openstrike -- --maps-dir $MAPS --script walk   --screenshot out/walk
-cargo run --release -p openstrike -- --maps-dir $MAPS --script model  --screenshot out/model
-cargo run --release -p openstrike -- --maps-dir $MAPS --script combat --screenshot out/combat
-cargo run --release -p openstrike -- --maps-dir $MAPS --script round  --screenshot out/round
-cargo run --release -p openstrike -- --maps-dir $MAPS --script lose   --screenshot out/lose
+target/release/openstrike --maps-dir $MAPS --script walk   --screenshot out/walk
+target/release/openstrike --maps-dir $MAPS --script model  --screenshot out/model
+target/release/openstrike --maps-dir $MAPS --script combat --screenshot out/combat
+target/release/openstrike --maps-dir $MAPS --script round  --screenshot out/round
+target/release/openstrike --maps-dir $MAPS --script lose   --screenshot out/lose
 ```
 
 - `walk` — spawn, run at 250 u/s, slide along walls without clipping, jump

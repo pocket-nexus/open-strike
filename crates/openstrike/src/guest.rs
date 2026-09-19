@@ -43,14 +43,16 @@ struct OverlayGfx {
     target_format: wgpu::TextureFormat,
 }
 
-/// Locate the PSP-baseline product bundle (`dist/pocket/psp`).
+/// Locate the bundle built for this desktop host and its native ABI.
 pub fn find_bundle() -> Result<(PathBuf, PathBuf)> {
     let mut roots: Vec<PathBuf> = Vec::new();
     if let Some(d) = std::env::var_os("OPENSTRIKE_UI_DIST") {
         roots.push(PathBuf::from(d));
     }
-    roots.push(PathBuf::from("dist/pocket/psp"));
-    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../dist/pocket/psp"));
+    if let Some(output) = option_env!("POCKETJS_OUTPUT_DIR") { roots.push(PathBuf::from(output)); }
+    let target = if cfg!(target_os = "macos") { "macos-app" } else { "linux-app" };
+    roots.push(PathBuf::from("dist/pocket").join(target));
+    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../dist/pocket").join(target));
     for root in &roots {
         let js = root.join("openstrike.js");
         let pak = root.join("openstrike.pak");
@@ -59,8 +61,8 @@ pub fn find_bundle() -> Result<(PathBuf, PathBuf)> {
         }
     }
     Err(anyhow!(
-        "HUD/rules bundle not found — build it first: `bun run build:ui` \
-         (searched dist/pocket/psp next to the repo root; override with OPENSTRIKE_UI_DIST)"
+        "HUD/rules bundle not found — build it first: `bun run build:desktop` \
+         (searched the desktop target bundle; override with OPENSTRIKE_UI_DIST)"
     ))
 }
 
@@ -74,7 +76,15 @@ impl StrikeGuest {
         let pak =
             std::fs::read(&pak_path).with_context(|| format!("reading {}", pak_path.display()))?;
 
-        let ui = UiSurface::new((ui_size.0 as f32, ui_size.1 as f32));
+        let target = option_env!("POCKETJS_TARGET").context("build this host with bun run build:desktop")?;
+        let abi: u32 = option_env!("POCKETJS_HOST_ABI").context("missing host ABI")?.parse()?;
+        let density: u32 = option_env!("POCKETJS_RASTER_DENSITY").context("missing raster density")?.parse()?;
+        let ui_size = (
+            option_env!("POCKETJS_LOGICAL_WIDTH").and_then(|v| v.parse().ok()).unwrap_or(ui_size.0),
+            option_env!("POCKETJS_LOGICAL_HEIGHT").and_then(|v| v.parse().ok()).unwrap_or(ui_size.1),
+        );
+        let ui = UiSurface::new_with_density((ui_size.0 as f32, ui_size.1 as f32), density);
+        ui.set_identity(target, abi);
         ui.feed_pak(&pak);
         let guest = Guest::new()?;
         ui.mount(&guest)?;

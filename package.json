@@ -7,6 +7,7 @@
     "setup": "cd vendor/pocketjs && bun install && cd ../.. && mkdir -p node_modules/@pocketjs && ln -sfn ../../vendor/pocketjs node_modules/@pocketjs/framework && ln -sfn ../vendor/pocketjs/node_modules/solid-js node_modules/solid-js && ln -sfn ../vendor/pocketjs/node_modules/bun-types node_modules/bun-types && bun scripts/ensure-pocketjs-generated.ts",
     "typecheck": "bun scripts/ensure-pocketjs-generated.ts && bun vendor/pocketjs/node_modules/typescript/bin/tsc --noEmit",
     "check:platforms": "bun run typecheck && bun vendor/pocketjs/tools/pocket.ts check --target psp && bun vendor/pocketjs/tools/pocket.ts check --target vita",
+    "build:desktop": "bun scripts/desktop.ts",
     "build:ui": "bun scripts/build-ui.ts --target psp",
     "build:symbian": "bun scripts/symbian.ts",
     "build:vita": "bun scripts/vita.ts",

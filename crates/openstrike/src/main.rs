@@ -4,6 +4,7 @@
 mod args;
 mod bot;
 mod character_preview;
+mod cooked_map;
 mod game;
 mod guest;
 mod scripts;
@@ -31,7 +32,14 @@ fn main() -> Result<()> {
 
     let map_path = args.resolve_map_path()?;
     log::info!("loading {}", map_path.display());
-    let map = pocket3d::bsp::load_map(&map_path, &args.wad_dirs())?;
+    let map = if map_path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("p3d"))
+    {
+        cooked_map::load(&map_path)?
+    } else {
+        pocket3d::bsp::load_map(&map_path, &args.wad_dirs())?
+    };
 
     // Spawn selection.
     let spawn = if args.spawn_t {
