@@ -1,7 +1,7 @@
 """Export convex Blender meshes to Valve 220 .map and a self-contained WAD3.
 
 Run in Blender: blender --background scene.blend --python scripts/blender-to-map.py -- --out out/scene.map
-Objects use bsp_role=world|detail|entity|ignore; point entities use bsp_classname.
+Objects use bsp_role=world|detail|solid|decor|entity|ignore; point entities use bsp_classname.
 One Blender unit is one metre (32 GoldSrc units). Materials supply a base color
 or one image texture; unsupported shader graphs and non-convex solids fail.
 """
@@ -83,7 +83,10 @@ def write_wad(path, materials):
     data = bytearray(b'WAD3' + bytes(8))
     entries = []
     for name, material in sorted(materials.items()):
-        block = miptex(name, texture_pixels(material))
+        size = int(material.get('bsp_size', 64))
+        if size not in [16, 32, 64, 128, 256, 512]:
+            raise ValueError(f'{name}: bsp_size must be a power of two from 16 to 512')
+        block = miptex(name, texture_pixels(material, size), size)
         entries.append(struct.pack('<IIIBBH16s', len(data), len(block), len(block), 0x43, 0, 0, name.encode('ascii')))
         data.extend(block)
     offset = len(data)
@@ -147,7 +150,7 @@ def brush(obj, scale, materials):
             if obj.get('bsp_fit', False):
                 for i, axis_vector in enumerate([u, v]):
                     values = [axis_vector.dot(p) for p in face]
-                    scales[i] = (max(values) - min(values)) / 64
+                    scales[i] = (max(values) - min(values)) / int(material.get("bsp_size", 64))
                     if scales[i] <= 1e-6:
                         raise ValueError(f'{obj.name}: cannot fit this face projection')
                     shifts[i] = -min(values) / scales[i]
@@ -163,7 +166,7 @@ def brush(obj, scale, materials):
 def export_scene(output, scale=32):
     output = Path(output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    materials, world, entities = {}, [], []
+    materials, world, entities, decor, solid = {}, [], [], [], []
     count = 0
     for obj in sorted(bpy.context.scene.objects, key=lambda o: o.name):
         role = obj.get('bsp_role', 'world' if obj.type == 'MESH' else 'ignore')
@@ -175,18 +178,28 @@ def export_scene(output, scale=32):
             if not props.get('classname'):
                 raise ValueError(f'{obj.name}: entity needs bsp_classname')
             entities.append('{\n' + '\n'.join(quote(k) + ' ' + quote(v) for k, v in props.items()) + '\n}')
-        elif role in ['world', 'detail'] and obj.type == 'MESH':
+        elif role in ['world', 'detail', 'solid', 'decor'] and obj.type == 'MESH':
             text = brush(obj, scale, materials)
-            if role == 'detail':
+            if role == 'solid':
+                solid.append(text)
+            elif role == 'decor':
+                decor.append(text)
+            elif role == 'detail':
                 entities.append('{\n"classname" "func_detail"\n"zhlt_detaillevel" "1"\n' + text + '\n}')
             else:
                 world.append(text)
             count += 1
         else:
             raise ValueError(f'{obj.name}: invalid BSP role {role!r}')
+    if solid:
+        entities.append('{\n"classname" "func_wall"\n' + '\n'.join(solid) + '\n}')
+    if decor:
+        # World-space brushes share one non-solid model, without an origin shift.
+        entities.append('{\n"classname" "func_illusionary"\n' + '\n'.join(decor) + '\n}')
     wad = output.with_suffix('.wad')
     write_wad(wad, materials)
-    output.write_text('{\n"classname" "worldspawn"\n"mapversion" "220"\n"wad" ' + quote(wad) + '\n"skyname" "desert"\n' + '\n'.join(world) + '\n}\n' + '\n'.join(entities) + '\n')
+    environment = '\n'.join(quote(key[4:]) + ' ' + quote(bpy.context.scene[key]) for key in ['bsp_pocket_sky_zenith', 'bsp_pocket_sky_horizon'] if key in bpy.context.scene)
+    output.write_text('{\n"classname" "worldspawn"\n"mapversion" "220"\n"wad" ' + quote(wad) + '\n"skyname" "desert"\n' + environment + '\n' + '\n'.join(world) + '\n}\n' + '\n'.join(entities) + '\n')
     receipt = {'source': bpy.data.filepath, 'map': str(output), 'wad': str(wad), 'units_per_metre': scale, 'brushes': count, 'entities': len(entities), 'textures': sorted(materials)}
     output.with_suffix('.export.json').write_text(json.dumps(receipt, indent=2))
     print(json.dumps(receipt))

@@ -29,6 +29,25 @@ wad = (out / 'fixture.wad').read_bytes()
 assert wad[:4] == b'WAD3' and struct.unpack_from('<I', wad, 4)[0] == 1
 assert '"mapversion" "220"' in (out / 'fixture.map').read_text()
 
+# Visual-only brushes share one model and retain world coordinates.
+cube['bsp_role'] = 'decor'
+copy = cube.copy(); copy.data = cube.data.copy()
+bpy.context.collection.objects.link(copy); copy.location.x += 5
+bpy.context.scene['bsp_pocket_sky_zenith'] = '0.3 0.5 0.8'
+bpy.context.scene['bsp_pocket_sky_horizon'] = '0.8 0.9 1'
+exporter.export_scene(out / 'decor.map')
+decor = (out / 'decor.map').read_text()
+assert decor.count('"classname" "func_illusionary"') == 1
+assert '"origin"' not in decor, 'world-space decor must not be translated twice'
+assert '"pocket_sky_zenith" "0.3 0.5 0.8"' in decor
+copy['bsp_role'] = 'solid'
+exporter.export_scene(out / 'solid.map')
+solid = (out / 'solid.map').read_text()
+assert solid.count('"classname" "func_wall"') == 1
+assert solid.count('"classname" "func_illusionary"') == 1
+assert '"origin"' not in solid
+bpy.data.objects.remove(copy, do_unlink=True)
+
 bpy.ops.mesh.primitive_plane_add()
 plane = bpy.context.object
 plane.data.materials.append(mat)

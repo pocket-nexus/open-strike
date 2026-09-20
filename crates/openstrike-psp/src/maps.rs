@@ -78,11 +78,18 @@ pub unsafe fn scan() -> (Vec<String>, u32) {
 
 /// Load `<root>/maps/<name>.p3d` into the shared buffer and build the world:
 /// cooked view, renderer, and a fresh simulation with the boot configuration
-/// replayed. The caller guarantees no previous Game still borrows the buffer.
+/// replayed.
+///
+/// # Safety
+/// Both buffers must be valid, disjoint, 16-byte-aligned allocations for their
+/// declared capacities. No previous Game or in-flight GE command may borrow
+/// either region. They must remain alive until the returned Game is dropped.
 pub unsafe fn load(
     name: &str,
     buf_ptr: *mut u8,
     buf_cap: usize,
+    texture_ptr: *mut u8,
+    texture_cap: usize,
     boot_cfg: &[Command],
 ) -> Result<Game, &'static str> {
     let path = zpath(ROOTS[ACTIVE_ROOT], name, ".p3d");
@@ -128,7 +135,9 @@ pub unsafe fn load(
     // after the guest's configuration, as reset_round does for later rounds.
     sim.spawn_bots(0);
     sim.weapon.reset();
-    let world = WorldRenderer::new(map);
+    // The caller also guarantees no previous renderer borrows this VRAM.
+    let texture_memory = core::slice::from_raw_parts_mut(texture_ptr, texture_cap);
+    let world = WorldRenderer::new_cached(map, texture_memory);
     let map_key = openstrike_core::net::map_key(data)?;
     Ok(Game {
         sim,

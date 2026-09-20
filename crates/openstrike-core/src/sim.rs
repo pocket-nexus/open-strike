@@ -216,7 +216,7 @@ impl StrikeSim {
         }
         for i in 0..self.bot_count {
             // Spread bots over the spawn list.
-            let sp = self.bot_spawns[(i * 3 + 1) % self.bot_spawns.len()];
+            let sp = self.bot_spawns[i % self.bot_spawns.len()];
             let mut bot = Bot::spawn(sp.pos, sp.yaw);
             bot.anim.clip = walk_clip;
             self.bots.push(bot);
@@ -985,5 +985,29 @@ mod mod_tests {
         assert_eq!(end(&gun), end(&magic));
         assert_eq!(gun.rng.0, magic.rng.0);
         assert_eq!(gun.player.pitch, magic.player.pitch);
+    }
+}
+
+#[cfg(test)]
+mod spawn_distribution_tests {
+    use super::*;
+    #[test]
+    fn spawn_rotation_visits_every_authored_position_before_reusing_one() {
+        for count in [2, 3, 4, 6] {
+            let points: Vec<_> = (0..count)
+                .map(|i| SpawnPoint {
+                    pos: Vec3::new(i as f32 * 64.0, 36.0, 0.0),
+                    yaw: 0.0,
+                })
+                .collect();
+            let mut sim = StrikeSim::new(Vec3::ZERO, 0.0, points.clone(), count + 1);
+            for i in 0..count + 1 {
+                assert_eq!(sim.bots[i].state.pos, points[i % count].pos);
+            }
+            sim.reset_round(0);
+            for i in 0..count {
+                assert_eq!(sim.bots[i].state.pos, points[i].pos);
+            }
+        }
     }
 }

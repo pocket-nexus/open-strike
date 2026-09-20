@@ -55,12 +55,18 @@ if (modPaths.length > 7) throw new Error("At most seven additional mod packs");
 const release = argv.includes("-r") || argv.includes("--release");
 const features: string[] = [];
 if (argv.includes("--capture")) features.push("capture");
+// RGB565 frees 544 KiB for resident world geometry and textures.
+// Keep 32-bit output as an explicit quality/performance comparison.
+if (argv.includes("--framebuffer16") && argv.includes("--framebuffer32")) throw new Error("Choose one framebuffer format");
+if (!argv.includes("--framebuffer32")) features.push("framebuffer16");
 if (argv.includes("--bench")) features.push("bench");
+if (argv.includes("--map-bench")) features.push("map-bench");
 if (argv.includes("--bench-spikes")) features.push("bench-spikes");
 if (argv.includes("--idle-bench")) features.push("idle-bench");
 if (argv.includes("--character-bench")) features.push("character-bench");
 if (argv.includes("--proximity-bench")) features.push("proximity-bench");
 if (argv.includes("--combat-bench")) features.push("combat-bench");
+if (argv.includes("--encounter-bench")) features.push("encounter-bench");
 if (argv.includes("--approach-bench")) features.push("approach-bench");
 if (argv.includes("--motion-bench")) features.push("motion-bench");
 
@@ -119,6 +125,7 @@ const env = {
   ...toolchain.environment,
   ...nativePocketContract(pocketPlan),
   POCKETJS_OFFLOAD_SLOT: createHash("sha256").update("dev.pocket-stack.openstrike").digest("hex").slice(0, 16),
+  OPENSTRIKE_MAP_TOUR: argv.includes("--tour") ? resolve(flag("tour", "")) : "",
   OPENSTRIKE_CHARACTER_ASSET: characterAsset,
   OPENSTRIKE_MOD_PACKS: JSON.stringify(modPaths),
   OPENSTRIKE_INITIAL_MOD: process.env.OPENSTRIKE_INITIAL_MOD ?? "",
@@ -143,7 +150,7 @@ const env = {
   // builds boot into the menu.
   OPENSTRIKE_PSP_AUTOSTART:
     process.env.OPENSTRIKE_PSP_AUTOSTART ??
-    (features.length > 0 ? mapName : ""),
+    (features.some((feature) => feature !== "framebuffer16") ? mapName : ""),
   // pocketjs-psp's build.rs runs as a dependency; nativePocketContract keeps
   // the JS bundle and custom host on the same resolved target contract.
   POCKETJS_CAPTURE_INPUT: "",

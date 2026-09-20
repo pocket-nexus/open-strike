@@ -101,8 +101,11 @@ export default function Hud() {
     if (e.fatal) pushFeed(e.headshot ? "HEADSHOT × HOSTILE DOWN" : "HOSTILE DOWN");
   }));
   onCleanup(strike.on("roundReset", () => {
-    for (let i = 0; i < FEED_ROWS; i++) feedUntil[i] = 0;
-    feedDirty = true;
+    for (let i = 0; i < FEED_ROWS; i++) {
+      feedUntil[i] = 0;
+      feedStr[i] = " ";
+    }
+    feedDirty = false;
     resetEffects = true;
   }));
 
@@ -117,12 +120,20 @@ export default function Hud() {
     reload: 12, reloadScale: 13, reloadOffset: 14, vignette: 15, crosshair: 16,
   };
   let paintBatch: JumpBatch;
+  let resetBatch: JumpBatch;
   let paintDirty = false;
   const paint = (index: number, value: number) => {
     paintBatch.set(index, value);
     paintDirty = true;
   };
   onMount(() => {
+    // A round reset cancels five effect tracks together. Precompile their
+    // node/property pairs; hidden feed text can wait until the next kill.
+    resetBatch = createJumpBatch([
+      [flashOverlay, "opacity"], [hitmarker, "opacity"],
+      ...feedRows.map(node => [node, "opacity"] as const),
+    ]);
+    for (let i = 0; i < FEED_ROWS + 2; i++) resetBatch.set(i, 0);
     paintBatch = createJumpBatch([
       [banner, "opacity"], [bannerTitle, "textColor"],
       [bannerTop, "bgColor"], [bannerBottom, "bgColor"],
@@ -252,8 +263,7 @@ export default function Hud() {
     // jump/animate exclusively own these props: no hot-value cache can hide
     // a repeated hit's restart or the cancellation on a round reset.
     if (resetEffects) {
-      jump(flashOverlay, "opacity", 0);
-      jump(hitmarker, "opacity", 0);
+      resetBatch.commit();
       resetEffects = false;
       flashDirty = false;
       hitDuration = 0;

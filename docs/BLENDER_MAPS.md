@@ -30,7 +30,9 @@ Object custom properties:
 | Property | Value | Result |
 | --- | --- | --- |
 | `bsp_role` | `world` | Structural solid; default for meshes |
-| `bsp_role` | `detail` | Solid detail brush |
+| `bsp_role` | `detail` | Solid detail brush merged into the world BSP |
+| `bsp_role` | `solid` | Separate static brush hull; collision without splitting the world |
+| `bsp_role` | `decor` | Non-solid visual brush model; no collision or world splits |
 | `bsp_role` | `entity` | Point entity at the object's world position |
 | `bsp_role` | `ignore` | Preview object; omitted from the map |
 | `bsp_fit` | `true` | Fit the material image once across each brush face |
@@ -45,8 +47,8 @@ fail with the object's name. Lights and cameras without entity properties
 are preview objects.
 
 Materials use a base color or one image texture. Bake other shader graphs to
-images before export. The exporter writes 64×64 WAD textures with palettes
-and four mip levels. Texture names need 1–15 ASCII characters; `bsp_texture`
+images before export. The exporter writes WAD textures with palettes and four mip levels.
+`bsp_size` selects a square power-of-two size from 16 to 512; the default is 64. Texture names need 1–15 ASCII characters; `bsp_texture`
 can override the Blender material name. `bsp_scale` controls world-aligned
 mapping (default `0.5`, a one-metre tile). Arbitrary Blender UV mapping is not
 exported. Names beginning with `{` use palette-index transparency. Sparse
@@ -78,6 +80,80 @@ cargo run -p openstrike-core --example verify_map_route -- \
   --python test/blender-map-fixture.py -- out/blender-fixture
 ```
 
-The generated route passes in both directions with four valid spawns. The
-current cooked map is about 1.3 MB. Frame rate on PSP requires device validation;
-a desktop screenshot and collision traversal do not establish that result.
+The scene has two player spawns and three opponent spawns. Bot distribution
+visits each available spawn before reusing one. The encounter check uses
+these positions, the map collision and real damage, without moving opponents:
+
+```sh
+cargo run -p openstrike-core --example verify_bot_encounter -- \
+  out/parkour/wwdc24-parkour.p3d
+```
+
+On PSP choose **SOLO VS BOTS → loadout → AP WWDC24 → ○ DEPLOY**.
+This path needs neither Companion nor a network connection. SELECT returns
+to the previous selection page; the pause menu returns from a match.
+
+`--detail 1..4` selects authored detail density. `--subdivide 16..256` controls
+the maximum vertex-light grid spacing in map units. `--no-preview` skips the
+Blender beauty render. These options change the generated assets, not the
+PSP display resolution. `scene.json`, `tour.txt`, `route.txt` and `build.json`
+record the preset, camera positions, walking route and asset hashes.
+
+The demo defaults to **detail 4 and a 128-unit lighting grid**. PSP builds use
+480×272 RGB565 with ordered dithering. `--framebuffer32` selects RGBA8888 for
+comparison. The smaller display buffers leave 1,261,568 bytes of the 2 MiB
+eDRAM for immutable map textures and geometry. Assets that do not fit remain
+in main memory; the cache never exceeds the host-provided region.
+
+Scene properties `bsp_pocket_sky_zenith` and `bsp_pocket_sky_horizon` each
+contain three color channels in `[0,1]`. The exporter writes them into
+worldspawn; the optional P3D sky section retains them for PSP and the web.
+Maps without these properties retain the renderer's default sky.
+
+## Device measurements
+
+```sh
+bun scripts/hw.ts --release --map-bench --tour out/parkour/tour.txt \
+  --map wwdc24-parkour --cooked-maps dist/maps --daemon
+bun scripts/bench-report.ts path/to/OpenStrike-bench.jsonl --tour --min-fps 55
+
+bun scripts/hw.ts --release --encounter-bench \
+  --map wwdc24-parkour --cooked-maps dist/maps --daemon
+```
+
+The map tour rotates through ten positions with the normal simulation and
+HUD running. After 300 warm-up frames it measures 6,000 frames. Results stay
+in RAM until all 20 windows finish; file writes and screenshots do not run
+inside the measured interval. The encounter probe uses authored spawns and
+scripts aim, fire and reload. Bot AI, collision, damage and round rules remain
+active. **These probes are excluded from the normal package.**
+
+Compare measured fps, missed display refreshes, long frame intervals and
+combat events. `--max-late 0` adds a zero-long-frame gate. GPU synchronization
+wait is the unfinished portion of the preceding draw, not total GPU time.
+A measured stress-preset failure establishes a limit for that workload; it
+does not prove an absolute hardware maximum for every possible renderer.
+Use one PSPLINK bridge and disable the DevTools mailbox during benchmarks.
+
+## Static map explorer
+
+```sh
+bun scripts/build-map-site.ts \
+  --bsp out/parkour/wwdc24-parkour.bsp \
+  --psp-map out/parkour/wwdc24-parkour.p3d \
+  --scene out/parkour/scene.json --subdivide 128 --out dist/map-site
+bun scripts/serve-map-site.ts dist/map-site 4174
+```
+
+**The web exporter reads the same cooked geometry, vertex lighting and
+textures as PSP.** `--psp-map` requires a byte-identical cook before export.
+`--scene` supplies named viewpoints and presentation copy; without it, the
+viewer starts at the BSP's player spawns. The output is a directory of HTML,
+CSS, JavaScript and binary assets, with no external dependencies or server
+runtime. Serve the directory over HTTP or upload it to a static host.
+
+WebGL 2 draws the map. Drag to look, use WASD to move and Q/E to change height;
+viewpoint buttons restore authored camera positions. This page is a free
+camera viewer, not a browser port of the game. It includes the source BSP
+download. Generated output stays under ignored `dist/`; the reusable viewer
+and exporter sources are committed under `site/map-viewer` and `scripts`.

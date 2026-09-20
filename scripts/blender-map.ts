@@ -58,12 +58,14 @@ async function main() {
     return;
   }
   if (args.includes("--demo") === !!value("--blend")) throw new Error("Choose --demo or --blend scene.blend");
+  const subdivide = Number(value("--subdivide") ?? "128");
+  if (!Number.isFinite(subdivide) || subdivide < 16 || subdivide > 256) throw new Error("--subdivide must be between 16 and 256");
   const out = resolve(value("--out") ?? "out/parkour");
   mkdirSync(out, { recursive: true });
   const blender = value("--blender") ?? process.env.BLENDER ?? Bun.which("blender") ?? "/Applications/Blender.app/Contents/MacOS/Blender";
   if (!existsSync(blender)) throw new Error("Blender not found; set BLENDER or pass --blender");
   const scene = args.includes("--demo") ? join(out, "wwdc24-parkour.blend") : resolve(value("--blend")!);
-  if (args.includes("--demo")) await run([blender, "--background", "--factory-startup", "--python-exit-code", "1", "--python", join(root, "scripts/build-parkour.py"), "--", "--out", out], root, join(out, "blender.log"));
+  if (args.includes("--demo")) await run([blender, "--background", "--factory-startup", "--python-exit-code", "1", "--python", join(root, "scripts/build-parkour.py"), "--", "--out", out, "--detail", value("--detail") ?? "4", ...(args.includes("--no-preview") ? ["--no-preview"] : [])], root, join(out, "blender.log"));
   const map = join(out, basename(scene, ".blend") + ".map");
   await run([blender, "--background", scene, "--python-exit-code", "1", "--python", join(root, "scripts/blender-to-map.py"), "--", "--out", map], root, join(out, "export.log"));
   const tools = await mapCompiler(value("--sdhlt-dir"));
@@ -71,13 +73,14 @@ async function main() {
     ["sdHLCSG", ["-nowadtextures", "-threads", "4"]],
     ["sdHLBSP", ["-threads", "4"]],
     ["sdHLVIS", ["-threads", "4"]],
-    ["sdHLRAD", ["-threads", "4", "-chop", "128", "-texchop", "128", "-bounce", "4", "-scale", "1", "-gamma", "0.8", "-ambient", "0.08", "0.09", "0.11"]],
+    ["sdHLRAD", ["-threads", "4", "-chop", "128", "-texchop", "128", "-bounce", "4", "-scale", "1", "-gamma", "0.8", "-ambient", "0.16", "0.17", "0.19"]],
   ] as const) await run([join(tools, tool), ...options, map], out, join(out, tool + ".log"));
   const bsp = map.replace(/\.map$/, ".bsp"), cooked = map.replace(/\.map$/, ".p3d");
   if (readFileSync(bsp).readInt32LE(0) !== 30) throw new Error("Expected GoldSrc BSP version 30");
-  await run(["cargo", "run", "--release", "--locked", "-q", "-p", "pocket3d-cook", "--", bsp, "--subdivide", "64", "--verify", "-o", cooked], join(root, "vendor/pocketjs/engine/pocket3d"), join(out, "cook.log"));
+  await run(["cargo", "run", "--release", "--locked", "-q", "-p", "pocket3d-cook", "--", bsp, "--subdivide", String(subdivide), "--verify", "-o", cooked], join(root, "vendor/pocketjs/engine/pocket3d"), join(out, "cook.log"));
   const files = [scene, map, map.replace(/\.map$/, ".wad"), bsp, cooked];
   writeFileSync(join(out, "build.json"), JSON.stringify({
+    subdivide,
     compiler: { revision: value("--sdhlt-dir") ? "external; inspect binary hashes" : SDHLT_REVISION, binaries: Object.fromEntries(["sdHLCSG", "sdHLBSP", "sdHLVIS", "sdHLRAD"].map((name) => [name, hash(join(tools, name))])) },
     files: Object.fromEntries(files.map((path) => [basename(path), { sha256: hash(path), bytes: readFileSync(path).length }])),
   }, null, 2));

@@ -1,7 +1,6 @@
 // The main menu — same night-ops language as the HUD, driven by the PocketJS
-// focus system. On mount it grabs focus (first map lit) and registers a
-// two-column grid so the d-pad walks the visible layout; `○` deploys the
-// focused map via `strike.loadMap(i)` and the host swaps the world in.
+// focus system: choose offline/online, loadout, then a two-column map grid.
+// `○` deploys the focused map through the native world lifecycle.
 
 import { createSignal, For, Show, onCleanup, onMount } from "solid-js";
 import { Text, View } from "@pocketjs/framework/components";
@@ -35,6 +34,7 @@ const ROW_BASE =
 
 /** "de_dust2" -> { tag: "DE", name: "DUST2" } */
 const pretty = (raw: string): { tag: string; name: string } => {
+  if (raw === "wwdc24-parkour") return { tag: "AP", name: "WWDC24" };
   const us = raw.indexOf("_");
   if (us <= 0) return { tag: "", name: raw.toUpperCase() };
   return {
@@ -44,18 +44,56 @@ const pretty = (raw: string): { tag: string; name: string } => {
 };
 
 export default function MainMenu() {
-  const [choosingMod, setChoosingMod] = createSignal(strike.mods.length > 1 || strike.networkSupported);
+  const [step, setStep] = createSignal<"mode" | "mod" | "map">("mode");
   return (
-    <Show
-      when={!choosingMod()}
-      fallback={<ModMenu onSelect={() => setChoosingMod(false)} />}
-    >
-      <MapMenu onBack={() => setChoosingMod(true)} />
+    <Show when={step() !== "mode"} fallback={<ModeMenu onSelect={(online) => {
+      strike.selectNetwork(online);
+      if (online) { strike.selectMod(0); setStep("map"); }
+      else setStep(strike.mods.length > 1 ? "mod" : "map");
+    }} />}>
+      <Show when={step() === "map"} fallback={<ModMenu onBack={() => setStep("mode")} onSelect={() => setStep("map")} />}>
+        <MapMenu onBack={() => setStep(!strike.networkSelected() && strike.mods.length > 1 ? "mod" : "mode")} />
+      </Show>
     </Show>
   );
 }
 
-function ModMenu(props: { onSelect(): void }) {
+function ModeMenu(props: { onSelect(online: boolean): void }) {
+  let grid!: Parameters<typeof pushFocusGrid>[0];
+  onMount(() => {
+    const disposeGrid = pushFocusGrid(grid, { columns: 1, wrap: true });
+    const disposeScope = pushFocusScope(grid, { autoFocus: true });
+    onCleanup(() => { disposeScope(); disposeGrid(); });
+  });
+  return (
+    <View class="w-full h-full justify-center items-center" style={{ bgColor: "#05080cf5" }}>
+      <View class="flex-col items-center gap-1">
+        <Text class="text-2xl font-bold tracking-wide" style={{ textColor: INK }}>OPENSTRIKE</Text>
+        <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>CHOOSE A MODE</Text>
+        <View ref={(el) => (grid = el)} class="flex-col gap-1 mt-3" style={{ width: 330 * S }}>
+          <View focusable class={ROW_BASE} onPress={() => props.onSelect(false)} style={{ width: 330 * S }}>
+            <View class="flex-col gap-1">
+              <Text class="text-sm font-bold" style={{ textColor: LIME }}>SOLO VS BOTS</Text>
+              <Text class="text-xs" style={{ textColor: DIM }}>Offline rounds · no connection needed</Text>
+            </View>
+          </View>
+          <Show when={strike.networkSupported}>
+            <View focusable class={ROW_BASE} onPress={() => props.onSelect(true)} style={{ width: 330 * S }}>
+              <View class="flex-col gap-1">
+                <Text class="text-sm font-bold" style={{ textColor: LIME }}>CROSSPLAY</Text>
+                <Text class="text-xs" style={{ textColor: DIM }}>1 vs 1 · Mac + PSP · Companion required</Text>
+              </View>
+            </View>
+          </Show>
+        </View>
+        <Text class="text-xs mt-3 tracking-wide" style={{ textColor: DIM }}>↑↓ SELECT · ○ CONTINUE</Text>
+      </View>
+    </View>
+  );
+}
+
+function ModMenu(props: { onSelect(): void; onBack(): void }) {
+  onButtonPress(0x0001, props.onBack);
   let grid!: Parameters<typeof pushFocusGrid>[0];
   onMount(() => {
     const disposeGrid = pushFocusGrid(grid, { columns: 1, wrap: true });
@@ -115,14 +153,7 @@ function ModMenu(props: { onSelect(): void }) {
               </View>
             )}
           </For>
-          <Show when={strike.networkSupported}>
-            <View focusable class={ROW_BASE} style={{ width: 330 * S }} onPress={() => {
-              if (strike.selectMod(0)) { strike.selectNetwork(true); props.onSelect(); }
-            }}>
-              <Text class="text-sm font-bold" style={{ textColor: LIME, width: 86 * S }}>CROSSPLAY</Text>
-              <Text class="text-xs" style={{ textColor: DIM }}>1 VS 1 · MAC + PSP</Text>
-            </View>
-          </Show>
+
         </View>
         <Text class="text-xs mt-3 tracking-wide" style={{ textColor: DIM }}>
           ↑↓ SELECT · ○ CONTINUE
@@ -135,7 +166,7 @@ function ModMenu(props: { onSelect(): void }) {
 function MapMenu(props: { onBack(): void }) {
   const [loading, setLoading] = createSignal(-1);
   onButtonPress(0x0001, () => {
-    if (loading() < 0 && (strike.mods.length > 1 || strike.networkSupported)) props.onBack();
+    if (loading() < 0) props.onBack();
   });
   const deploy = (i: number) => {
     if (loading() >= 0) return;
@@ -178,9 +209,7 @@ function MapMenu(props: { onBack(): void }) {
             class={S >= 2 ? "text-sm tracking-wide" : "text-xs tracking-wide"}
             style={{ textColor: DIM }}
           >
-            {strike.networkSelected() ? "CROSSPLAY · CHOOSE COMPANION MAP" : strike.mods.length > 1
-              ? strike.mod().title.toUpperCase()
-              : "TACTICAL OPERATIONS"}
+            {strike.networkSelected() ? "CROSSPLAY · CHOOSE COMPANION MAP" : "SOLO VS BOTS · " + strike.mod().title.toUpperCase()}
           </Text>
           <View style={{ width: 28 * S, height: 1, bgColor: LIME }} />
         </View>
@@ -240,9 +269,9 @@ function MapMenu(props: { onBack(): void }) {
               <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
                 ○ DEPLOY
               </Text>
-              <Show when={strike.mods.length > 1}>
+              <Show when={true}>
                 <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
-                  SELECT MOD
+                  SELECT BACK
                 </Text>
               </Show>
             </View>
