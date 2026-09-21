@@ -16,7 +16,7 @@
 
 <p align="center"><em>A CS-like FPS on classic BSP maps — Pocket3D worlds, a PocketJS JSX HUD, gameplay in TypeScript.<br/>
 The full 3D game targets desktop (wgpu), PSP (sceGu), PS Vita
-(vita2d/GXM), and Nokia E7 (OpenGL ES 2). The bottom shot was captured
+(vita2d/GXM), Nintendo 3DS (citro3d/PICA200), and Nokia E7 (OpenGL ES 2). The bottom shot was captured
 on a real PSP.</em></p>
 
 A single-player CS-like FPS built on the **Pocket runtime family**: a Rust
@@ -42,6 +42,8 @@ crates/openstrike-vita   the PS Vita build: a native 960×544 VPK on
 crates/openstrike-symbian
                          the E7 app core: the shared simulation + Pocket3D
                          GLES2, statically linked into PocketJS's Qt host
+crates/openstrike-3ds    the 3DS build: native 400×240 world/HUD plus a
+                         320×240 tactical map and touch controls
 
 game/                    the product bundle (JS/TSX) — runs on every target
   ├─ sdk.ts              `strike` SDK: state snapshots, events, commands
@@ -111,6 +113,79 @@ ABI and viewport environment. Target artifacts are isolated under
 `dist/pocket/<target>` so concurrent PSP/Vita builds cannot overwrite one
 another. At runtime PocketJS compares target and host ABI; the plan checksum
 is build-time consistency data, not a runtime trust mechanism.
+
+## Nintendo 3DS
+
+The top screen renders the textured BSP world, police opponents, rifle and
+shared game HUD through citro3d. The lower screen uses PocketJS's optional
+`display.auxiliary` and `input.touch.auxiliary` capabilities for a floor-aware
+map, player heading, opponents (amber when on a different level), 1×/2×/4×
+zoom, and a local waypoint. The 3DS package contains the classic loadout;
+custom character/projectile packs are not exposed by this renderer.
+
+| Control | Action |
+| --- | --- |
+| Circle Pad | Move |
+| C-stick (New 3DS), or X/B/Y/A | Aim |
+| Drag the lower-screen map | Aim; works on Old 3DS too |
+| R / lower-screen FIRE | Fire while held |
+| D-pad down / tap RELOAD | Reload |
+| L / lower-screen JUMP | Jump |
+| D-pad up / hold WALK | Slow walk |
+| Tap the map / CLEAR MARK | Place / remove a local waypoint |
+| Tap the zoom button | Cycle 1×, 2× and 4×; zoom follows the player |
+| SELECT | Return-to-menu dialog; A confirms the focused choice |
+| L+R+START | Return to Homebrew Launcher |
+
+Moving off a touch button cancels it until the next touch. Touch controls
+release on cancellation, round end and menu transitions. Waypoints are local
+navigation aids; this single-player game has no team radio or buy economy.
+
+Initialize the submodules with `git submodule update --init` and run `bun run
+setup`. Install the Rust toolchain pinned by
+`vendor/pocketjs/hosts/3ds/core/rust-toolchain.toml` with `rust-src`, start
+Docker, and pull the digest-pinned devkitARM image listed in
+`vendor/pocketjs/tools/3ds-toolchain.ts`. Supply all eight locally cooked
+`*.p3d` maps (see Map data below):
+
+```sh
+OPENSTRIKE_COOKED_MAPS=/path/to/cooked/maps bun run build:3ds
+bun run test:3ds
+OPENSTRIKE_COOKED_MAPS=/path/to/cooked/maps bun run test:e2e:3ds
+```
+
+Copy the contents of `dist/3ds/sd/` to the SD card root. The entry is
+`/3ds/OpenStrike/OpenStrike.3dsx`, with maps beside it in `maps/`. The build
+validates each cooked map and records every staged file's SHA-256 in
+`dist/3ds/build.json`. For ftpd, use the address shown on the console:
+
+```sh
+bun run deploy:3ds --host <3ds-ip> --port 5000
+```
+
+The deployer checks the production receipt, uploads temporary files, hashes
+their readback, then publishes them. Exit ftpd before launching the game.
+Transfer verification does not establish physical launch or performance.
+
+The emulator test needs Azahar (`AZAHAR=/Applications/Azahar.app` by default)
+and an initialized local Azahar profile. It creates an isolated SD/profile,
+records PICA readbacks of both screens, and checks native telemetry for
+button aiming, touch aiming, fire/release, reload and jump. Captures live in
+ignored `.pocket-build/validation/3ds/`; `dist/3ds/capture/` is a separate
+instrumented binary. Hardware performance, touch feel and HBL return still
+need testing on each console model.
+
+Set `E2E_3DS_SCENARIO=menu`, `missing-map`, or `retry` to exercise returning
+from a loaded world, a missing SD map, or selecting an available map after
+that failure. Missing-map cases remove only the isolated test SD's copy.
+`E2E_3DS_SCENARIO=map E2E_3DS_MAP=de_nuke` checks a named map's native
+identity, texture loading and both framebuffers.
+
+The build uses the pinned PocketJS host and UI core. `host.patch` applies
+native lifecycle/render hooks to an ignored copy under `.pocket/3ds-dev/`,
+after the preceding GPU frame has retired, and restores UI vertex state
+after native rendering. A patch mismatch fails the build. The vendored
+PocketJS checkout stays unmodified.
 
 ## Nokia E7: full 3D OpenStrike
 

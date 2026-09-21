@@ -1,0 +1,63 @@
+name: 3DS contracts and input
+
+on:
+  pull_request:
+    paths:
+      [
+        "crates/openstrike-3ds/**",
+        "crates/openstrike-core/**",
+        "crates/openstrike-character/**",
+        "crates/openstrike-mods/**",
+        "crates/openstrike-vita/src/**",
+        "crates/openstrike-psp/src/strike.rs",
+        "game/**",
+        "scripts/3ds.ts",
+        "scripts/deploy-3ds.py",
+        "test/*3ds*",
+        "test/tactical-touch.test.ts",
+        "pocket.json",
+        "package.json",
+        "vendor/pocketjs",
+        ".github/workflows/3ds.yml",
+      ]
+  push:
+    branches: [main]
+    paths:
+      [
+        "crates/openstrike-3ds/**",
+        "crates/openstrike-core/**",
+        "crates/openstrike-character/**",
+        "crates/openstrike-mods/**",
+        "crates/openstrike-vita/src/**",
+        "crates/openstrike-psp/src/strike.rs",
+        "game/**",
+        "scripts/3ds.ts",
+        "scripts/deploy-3ds.py",
+        "test/*3ds*",
+        "test/tactical-touch.test.ts",
+        "pocket.json",
+        "package.json",
+        "vendor/pocketjs",
+        ".github/workflows/3ds.yml",
+      ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - run: git submodule update --init vendor/pocketjs
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: oven-sh/setup-bun@v2
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/openstrike-3ds
+      - run: bun run setup
+      - run: bun run check:platforms
+      - run: bun run test:3ds
+      - run: bun run build:3ds --pocket-only

@@ -13,7 +13,10 @@
       ],
       "enhances": [
         "input.analog.left",
-        "display.viewport.live"
+        "display.viewport.live",
+        "input.analog.right",
+        "display.auxiliary",
+        "input.touch.auxiliary"
       ]
     }
   },
@@ -42,6 +45,17 @@
           640,
           640
         ]
+      }
+    },
+    "surfaces": {
+      "auxiliary": {
+        "fixed": {
+          "logical": [
+            320,
+            240
+          ],
+          "presentation": "native"
+        }
       }
     }
   }

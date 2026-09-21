@@ -1,0 +1,178 @@
+--- a/src/main.c
++++ b/src/main.c
+@@ -29,6 +29,7 @@
+ #include <sys/stat.h>
+ 
+ #include "gfx.h"
++#include "extension.h"
+ #include "input.h"
+ #include "pocket_core.h"
+ #include "qjs.h"
+@@ -670,6 +671,9 @@
+ 
+ int main(void) {
+   gfxInitDefault();
++#ifdef POCKETJS_CAPTURE
++  mkdir(CAPTURE_DIR, 0777);
++#endif
+   /* No-op on an Old 3DS; on a New 3DS it unlocks the faster clock and the
+    * extra cache, which the QuickJS guest feels directly. */
+   osSetSpeedupEnable(true);
+@@ -903,6 +907,26 @@
+       continue;
+ #endif
+     }
++    u64 offload_ui_ticks = svcGetSystemTick() - offload_cpu_start;
++    begin_frame_wait(
++#ifdef POCKETJS_CAPTURE
++      frame
++#else
++      run_frame
++#endif
++    );
++#if !defined(POCKETJS_CAPTURE) && !defined(POCKETJS_OFFLOAD)
++    /* Reaching the next FrameBegin proves the candidate's first submitted list
++     * retired without tripping the GPU watchdog. Only now does it become the
++     * active generation on SD. */
++    accept_guest(&guest, &runtime_state, &failures, run_frame);
++#endif
++    offload_cpu_start = svcGetSystemTick();
++    const char *native_error = NULL;
++    if (pocket_extension_prepare && !pocket_extension_prepare()) {
++      native_error = "native extension prepare failed";
++      goto native_frame_failed;
++    }
+     /* Animations always advance at the fixed 1/60 timestep; this host
+      * presents at the same rate, so it is one tick per frame. */
+     ui_tick();
+@@ -915,21 +939,6 @@
+     }
+ #endif
+ 
+-    u64 offload_ui_ticks = svcGetSystemTick() - offload_cpu_start;
+-    begin_frame_wait(
+-#ifdef POCKETJS_CAPTURE
+-      frame
+-#else
+-      run_frame
+-#endif
+-    );
+-#if !defined(POCKETJS_CAPTURE) && !defined(POCKETJS_OFFLOAD)
+-    /* Reaching the next FrameBegin proves the candidate's first submitted list
+-     * retired without tripping the GPU watchdog. Only now does it become the
+-     * active generation on SD. */
+-    accept_guest(&guest, &runtime_state, &failures, run_frame);
+-#endif
+-    offload_cpu_start = svcGetSystemTick();
+     gfx_begin_frame();
+ #ifdef POCKETJS_MEDIA
+     media_present();
+@@ -965,11 +974,19 @@
+     C3D_FrameDrawOn(primary_target);
+     /* C3D_FrameDrawOn resets the viewport, so this comes after it. */
+     C3D_SetViewport(0, 0, VIEW_H, VIEW_W);
++    if (pocket_extension_render && !pocket_extension_render(0)) {
++      native_error = "native extension primary render failed";
++      goto native_frame_failed;
++    }
+     gfx_draw_surface(0);
+ 
+     C3D_RenderTargetClear(auxiliary_target, C3D_CLEAR_ALL, 0x000000ff, 0);
+     C3D_FrameDrawOn(auxiliary_target);
+     C3D_SetViewport(0, 0, AUX_VIEW_H, AUX_VIEW_W);
++    if (pocket_extension_render && !pocket_extension_render(1)) {
++      native_error = "native extension auxiliary render failed";
++      goto native_frame_failed;
++    }
+     gfx_draw_surface(1);
+     C3D_FrameEnd(0);
+     offload_measure((unsigned)((offload_ui_ticks + svcGetSystemTick() - offload_cpu_start) * 1000000 / SYSCLOCK_ARM11));
+@@ -1038,6 +1055,16 @@
+     }
+     frame += 1;
+ #endif
++    continue;
++native_frame_failed:
++    C3D_FrameEnd(0);
++#if defined(POCKETJS_CAPTURE) || defined(POCKETJS_OFFLOAD)
++    fail(native_error);
++#else
++    recover_running_guest(&guest, &runtime_state, embedded, &failures,
++      run_frame + 1, "native-frame", native_error);
++    run_frame += 2;
++#endif
+   }
+ 
+   begin_frame_wait(
+--- a/src/qjs.c
++++ b/src/qjs.c
+@@ -757,6 +757,8 @@
+ // lifecycle
+ // ---------------------------------------------------------------------------
+ 
++#include "extension.h"
++
+ bool qjs_boot(
+   const char *source,
+   size_t source_length,
+@@ -799,6 +801,10 @@
+    * this at mount, so install it beforehand. */
+   JS_SetPropertyStr(context, global, "__simHz", JS_NewInt32(context, POCKETJS_SIMULATION_HZ));
+ 
++  if (pocket_extension_boot && !pocket_extension_boot(context)) {
++    set_error("native extension boot failed");
++    return false;
++  }
+   JSValue result = JS_Eval(context, source, source_length, "app.js", JS_EVAL_TYPE_GLOBAL);
+   if (JS_IsException(result)) {
+     take_exception();
+@@ -823,6 +829,10 @@
+   int32_t right_analog
+ ) {
+   if (context == NULL) return false;
++  if (pocket_extension_tick && !pocket_extension_tick(buttons, analog, right_analog)) {
++    set_error("native extension tick failed");
++    return false;
++  }
+   offload_frame();
+   coverage_used = false;
+   JSValue arguments[6] = {
+@@ -856,6 +866,11 @@
+     JS_FreeValue(context, result);
+     return false;
+   }
++  if (pocket_extension_after_guest && !pocket_extension_after_guest()) {
++    JS_FreeValue(context, result);
++    set_error("native extension after_guest failed");
++    return false;
++  }
+   /* Leak guard: the return value is freed every frame. */
+   JS_FreeValue(context, result);
+   return drain_jobs();
+@@ -870,6 +885,7 @@
+   media_forget_guest();
+ #endif
+   if (context != NULL) {
++    if (pocket_extension_shutdown) pocket_extension_shutdown();
+     JS_FreeValue(context, frame_function);
+     JS_FreeValue(context, global);
+     JS_FreeContext(context);
+--- a/src/gfx.c
++++ b/src/gfx.c
+@@ -896,6 +896,16 @@
+ 
+   C3D_BindProgram(&shader_program);
+   C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, projection_uniform, &batch->projection);
++  /* A native scene may have changed every vertex and alpha-test binding. */
++  C3D_AttrInfo *attributes = C3D_GetAttrInfo();
++  AttrInfo_Init(attributes);
++  AttrInfo_AddLoader(attributes, 0, GPU_FLOAT, 2);
++  AttrInfo_AddLoader(attributes, 1, GPU_FLOAT, 2);
++  AttrInfo_AddLoader(attributes, 2, GPU_FLOAT, 4);
++  C3D_BufInfo *buffer = C3D_GetBufInfo();
++  BufInfo_Init(buffer);
++  BufInfo_Add(buffer, vertices, sizeof *vertices, 3, 0x210);
++  C3D_AlphaTest(false, GPU_ALWAYS, 0);
+   C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_COLOR);
+   C3D_CullFace(GPU_CULL_NONE);
+   C3D_AlphaBlend(
