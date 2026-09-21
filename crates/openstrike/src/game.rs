@@ -55,6 +55,12 @@ impl OpenStrike {
             scene.lighting.sun_dir = sun.dir;
             scene.lighting.sun_color = sun.color * 0.9;
         }
+        if let Some(world) = map.entities.iter().find(|e| e.classname() == "worldspawn") {
+            if let Ok(Some(sky)) = pocket3d::bsp::entities::parse_sky(world) {
+                scene.sky.zenith = sky.zenith;
+                scene.sky.horizon = sky.horizon;
+            }
+        }
         let camera = Camera {
             fov_y: 74f32.to_radians(),
             ..Default::default()
@@ -144,7 +150,7 @@ impl OpenStrike {
 
     /// Full fixed-step game tick, from raw keyboard/mouse input.
     pub fn tick(&mut self, dt: f32, input: &Input) {
-        if input.key_pressed(KeyCode::KeyV) {
+        if self.sim.network.is_none() && input.key_pressed(KeyCode::KeyV) {
             self.sim.toggle_fly();
         }
         let mut sim_input = SimInput {

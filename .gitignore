@@ -22,8 +22,8 @@ crates/openstrike-vita/static/maps/
 crates/openstrike-symbian/target/
 # script/e2e outputs
 /out/
+/.pocket-build/
 /pocketjs-dbg/
 
-# 3DS native core and transient validation artifacts
 /crates/openstrike-3ds/target/
-/.pocket-build/
+__pycache__/

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f4f5ef">
+  <title>WWDC24 · OpenStrike Map Explorer</title>
+  <meta name="description" content="Step inside OpenStrike’s playable reconstruction of the WWDC24 atrium, stairways and keynote hall.">
+  <link rel="stylesheet" href="style.css"><link rel="icon" href="mark.svg" type="image/svg+xml">
+</head>
+<body>
+  <header class="masthead">
+    <a class="brand" href="https://github.com/pocket-stack/open-strike" aria-label="OpenStrike on GitHub"><img src="mark.svg" width="25" height="25" alt=""><span>OPENSTRIKE</span></a>
+    <span class="edition">MAP EXPLORER <span class="dot"></span> 01</span>
+    <a class="source-link" href="https://github.com/pocket-stack/open-strike">Open source <span aria-hidden="true">↗</span></a>
+  </header>
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow" id="location">APPLE PARK · WWDC24</p><h1 id="title">A familiar place.<br>A new way in.</h1></div>
+      <div class="intro-right"><p id="description">From the keynote to the courtyard.<br>Explore the space, one viewpoint at a time.</p><span class="scene-label">INTERACTIVE 3D SCENE <span aria-hidden="true">↘</span></span></div>
+    </section>
+    <section class="viewer" aria-label="Interactive map">
+      <canvas id="canvas" tabindex="0" aria-label="3D map. Drag to look. Focus the map and use W A S D to move; Q and E change height."></canvas>
+      <div class="scene-top"><span class="scene-pill"><i></i><span id="view-name">Upper bridge</span></span><button id="help-toggle" class="round" aria-label="Show navigation controls" aria-expanded="false">?</button></div>
+      <div id="loading" class="loading" role="status"><span class="spinner"></span><strong>Opening the scene</strong><span>Finding our way to the atrium.</span></div>
+      <div id="error" class="loading" role="alert" hidden><strong>The scene couldn’t open.</strong><span id="error-message">Please reload and try again.</span><button id="retry">Try again</button></div>
+      <aside id="help" class="help" hidden><strong>Make yourself at home.</strong><p>Drag the scene to look around. Click the scene, then use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to move. <kbd>Q</kbd> / <kbd>E</kbd> move down / up; <kbd>Shift</kbd> moves faster.</p><p>This is a free camera. Choose a viewpoint below to find your way back.</p></aside>
+      <div class="scene-bottom"><span id="look-hint">DRAG TO LOOK · WASD TO EXPLORE</span><button id="reset" aria-label="Reset the current viewpoint">Reset view <span aria-hidden="true">↺</span></button></div>
+      <div class="touch-pad" aria-label="Move camera"><button data-move="w" aria-label="Move forward">↑</button><div><button data-move="a" aria-label="Move left">←</button><button data-move="s" aria-label="Move backward">↓</button><button data-move="d" aria-label="Move right">→</button></div></div>
+    </section>
+    <section class="viewpoints" aria-label="Choose a viewpoint"><div class="view-heading"><span>TAKE A LOOK AROUND</span><span id="view-count">10 viewpoints</span></div><div id="views" role="group" aria-label="Map viewpoints"></div></section>
+    <section class="story"><div><span class="eyebrow">BUILT TO BE PLAYED</span><h2>A little keynote.<br>A whole new playground.</h2></div><div><p id="story-text">The bridge, opposing stairways and presentation hall draw on Apple’s WWDC24 transition. The connecting galleries and gardens extend the route into a space for OpenStrike.</p><p class="muted">An independent reconstruction. Dimensions between filmed views are inferred; the surrounding play space is authored.</p><div class="story-links"><a id="reference" href="https://developer.apple.com/videos/play/wwdc2024/101/" target="_blank" rel="noopener noreferrer">Watch the original ↗</a><a href="assets/map.bsp" download>Download the BSP ↓</a></div></div></section>
+  </main>
+  <footer><span>POCKET STACK / OPENSTRIKE</span><span>Made for a handheld. Open to explore.</span><a href="https://github.com/pocket-stack/open-strike">Build your own ↗</a></footer>
+  <script type="module" src="viewer.js"></script>
+</body>
+</html>

@@ -16,7 +16,8 @@
         "display.viewport.live",
         "input.analog.right",
         "display.auxiliary",
-        "input.touch.auxiliary"
+        "input.touch.auxiliary",
+        "io.offload"
       ]
     }
   },

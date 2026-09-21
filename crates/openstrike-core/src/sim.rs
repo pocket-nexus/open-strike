@@ -98,6 +98,7 @@ pub enum GameEvent {
 /// during the guest turn, applied by the host afterwards.
 #[derive(Clone, Debug)]
 pub enum Command {
+    NetworkReply(alloc::string::String),
     SetPhase(Phase),
     ResetRound,
     AddWin,
@@ -146,6 +147,7 @@ pub struct SimInput {
 /// The platform-free simulation. Platforms own presentation and input; this
 /// owns state and time.
 pub struct StrikeSim {
+    pub network: Option<crate::net::Client>,
     pub player: Player,
     pub bots: Vec<Bot>,
     pub bot_count: usize,
@@ -180,6 +182,7 @@ impl StrikeSim {
         bot_count: usize,
     ) -> Self {
         let mut sim = Self {
+            network: None,
             player: Player::spawn(spawn_pos, spawn_yaw),
             bots: Vec::new(),
             bot_count,
@@ -213,7 +216,7 @@ impl StrikeSim {
         }
         for i in 0..self.bot_count {
             // Spread bots over the spawn list.
-            let sp = self.bot_spawns[(i * 3 + 1) % self.bot_spawns.len()];
+            let sp = self.bot_spawns[i % self.bot_spawns.len()];
             let mut bot = Bot::spawn(sp.pos, sp.yaw);
             bot.anim.clip = walk_clip;
             self.bots.push(bot);
@@ -235,7 +238,21 @@ impl StrikeSim {
 
     /// Apply one guest command (drained after each guest turn).
     pub fn apply(&mut self, cmd: Command, walk_clip: usize) {
+        if let Command::NetworkReply(raw) = &cmd {
+            if let Some(network) = &mut self.network {
+                if raw.is_empty() {
+                    network.fail();
+                } else {
+                    network.receive(raw);
+                }
+            }
+            return;
+        }
+        if self.network.is_some() {
+            return;
+        }
         match cmd {
+            Command::NetworkReply(_) => {}
             Command::SetPhase(p) => self.phase = p,
             Command::ResetRound => self.reset_round(walk_clip),
             Command::AddWin => self.score.wins += 1,
@@ -282,6 +299,22 @@ impl StrikeSim {
 
     /// Full fixed-step game tick.
     pub fn tick(&mut self, col: &MapCollision, dt: f32, input: &SimInput) {
+        if let Some(mut network) = self.network.take() {
+            network.tick(self, col, input);
+            self.network = Some(network);
+            return;
+        }
+        self.tick_world(col, dt, input, true, true);
+    }
+
+    pub(crate) fn tick_world(
+        &mut self,
+        col: &MapCollision,
+        dt: f32,
+        input: &SimInput,
+        ai: bool,
+        damage: bool,
+    ) {
         self.time += dt;
         self.effects.tick(dt);
         let was_reloading = self.weapon.reloading();
@@ -314,7 +347,7 @@ impl StrikeSim {
                 && (self.projectile_config.is_none() || self.projectiles.available())
                 && self.weapon.fire()
             {
-                self.fire_shot(col);
+                self.fire_shot(col, damage);
             }
         }
 
@@ -323,7 +356,7 @@ impl StrikeSim {
         let player_alive = self.player.alive;
         let mut incoming = 0i32;
         let bot_cfg = self.bot_cfg.clone();
-        for bot in &mut self.bots {
+        for bot in self.bots.iter_mut().filter(|_| ai) {
             let shot = bot.tick(
                 col,
                 player_eye,
@@ -381,7 +414,7 @@ impl StrikeSim {
         }
 
         // Soft push-out so bots don't share space with the player.
-        if self.player.alive {
+        if ai && self.player.alive {
             for bot in self.bots.iter().filter(|b| b.alive()) {
                 let d = self.player.state.pos - bot.state.pos;
                 let horiz = Vec3::new(d.x, 0.0, d.z);
@@ -393,7 +426,7 @@ impl StrikeSim {
         }
     }
 
-    fn tick_player_movement(
+    pub(crate) fn tick_player_movement(
         &mut self,
         col: &MapCollision,
         dt: f32,
@@ -440,7 +473,7 @@ impl StrikeSim {
         }
     }
 
-    fn fire_shot(&mut self, col: &MapCollision) {
+    fn fire_shot(&mut self, col: &MapCollision, damage: bool) {
         self.fired_this_tick = true;
         let p = &self.player;
         let eye = p.eye();
@@ -510,7 +543,7 @@ impl StrikeSim {
         );
         self.effects.list.last_mut().unwrap().viewmodel = true;
 
-        if let Some(i) = hit_bot {
+        if let Some(i) = hit_bot.filter(|_| damage) {
             let bot = &mut self.bots[i];
             let headshot = hit_point.y > bot.state.pos.y + 22.0;
             let dmg = if headshot {
@@ -937,8 +970,8 @@ mod mod_tests {
             shot: ShotStyle::Beam,
             ..Default::default()
         };
-        gun.fire_shot(&col);
-        magic.fire_shot(&col);
+        gun.fire_shot(&col, true);
+        magic.fire_shot(&col, true);
         let end = |sim: &StrikeSim| {
             sim.effects
                 .list
@@ -952,5 +985,29 @@ mod mod_tests {
         assert_eq!(end(&gun), end(&magic));
         assert_eq!(gun.rng.0, magic.rng.0);
         assert_eq!(gun.player.pitch, magic.player.pitch);
+    }
+}
+
+#[cfg(test)]
+mod spawn_distribution_tests {
+    use super::*;
+    #[test]
+    fn spawn_rotation_visits_every_authored_position_before_reusing_one() {
+        for count in [2, 3, 4, 6] {
+            let points: Vec<_> = (0..count)
+                .map(|i| SpawnPoint {
+                    pos: Vec3::new(i as f32 * 64.0, 36.0, 0.0),
+                    yaw: 0.0,
+                })
+                .collect();
+            let mut sim = StrikeSim::new(Vec3::ZERO, 0.0, points.clone(), count + 1);
+            for i in 0..count + 1 {
+                assert_eq!(sim.bots[i].state.pos, points[i % count].pos);
+            }
+            sim.reset_round(0);
+            for i in 0..count {
+                assert_eq!(sim.bots[i].state.pos, points[i].pos);
+            }
+        }
     }
 }

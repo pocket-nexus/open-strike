@@ -15,11 +15,13 @@
 // contract before Pocket's shared, versioned toolchain cache.
 
 import { $ } from "bun";
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { resolvePspBuildToolchain } from "../vendor/pocketjs/tools/psp-toolchain.ts";
 import { compilePocketTarget, nativePocketContract } from "./pocket-contract.ts";
 import { requestExtendedMemory } from "./psp-memory.ts";
+import { cookMap } from "./cook-map.ts";
 
 const repo = new URL("..", import.meta.url).pathname;
 const home = process.env.HOME ?? "";
@@ -53,12 +55,18 @@ if (modPaths.length > 7) throw new Error("At most seven additional mod packs");
 const release = argv.includes("-r") || argv.includes("--release");
 const features: string[] = [];
 if (argv.includes("--capture")) features.push("capture");
+// RGB565 frees 544 KiB for resident world geometry and textures.
+// Keep 32-bit output as an explicit quality/performance comparison.
+if (argv.includes("--framebuffer16") && argv.includes("--framebuffer32")) throw new Error("Choose one framebuffer format");
+if (!argv.includes("--framebuffer32")) features.push("framebuffer16");
 if (argv.includes("--bench")) features.push("bench");
+if (argv.includes("--map-bench")) features.push("map-bench");
 if (argv.includes("--bench-spikes")) features.push("bench-spikes");
 if (argv.includes("--idle-bench")) features.push("idle-bench");
 if (argv.includes("--character-bench")) features.push("character-bench");
 if (argv.includes("--proximity-bench")) features.push("proximity-bench");
 if (argv.includes("--combat-bench")) features.push("combat-bench");
+if (argv.includes("--encounter-bench")) features.push("encounter-bench");
 if (argv.includes("--approach-bench")) features.push("approach-bench");
 if (argv.includes("--motion-bench")) features.push("motion-bench");
 
@@ -86,11 +94,7 @@ for (const f of bsps) {
   const stem = f.slice(0, -4);
   const src = `${mapsRoot}/maps/${f}`;
   const p3d = `${repo}dist/maps/${stem}.p3d`;
-  if (existsSync(p3d) && statSync(p3d).mtimeMs > statSync(src).mtimeMs) continue;
-  console.log(`openstrike-psp: cooking ${stem}`);
-  await $`cargo run --release -q -p pocket3d-cook -- ${src} --wads ${mapsRoot}/support --subdivide 32 -o ${p3d} --verify`.cwd(
-    `${repo}vendor/pocketjs/engine/pocket3d`,
-  );
+  await cookMap(src, p3d, [`${mapsRoot}/support`], `${repo}vendor/pocketjs/engine/pocket3d`);
 }
 
 // Existing user-supplied maps are valid inputs only after the pinned engine
@@ -120,6 +124,8 @@ const llvm = toolchain.llvmBin;
 const env = {
   ...toolchain.environment,
   ...nativePocketContract(pocketPlan),
+  POCKETJS_OFFLOAD_SLOT: createHash("sha256").update("dev.pocket-stack.openstrike").digest("hex").slice(0, 16),
+  OPENSTRIKE_MAP_TOUR: argv.includes("--tour") ? resolve(flag("tour", "")) : "",
   OPENSTRIKE_CHARACTER_ASSET: characterAsset,
   OPENSTRIKE_MOD_PACKS: JSON.stringify(modPaths),
   OPENSTRIKE_INITIAL_MOD: process.env.OPENSTRIKE_INITIAL_MOD ?? "",
@@ -144,7 +150,7 @@ const env = {
   // builds boot into the menu.
   OPENSTRIKE_PSP_AUTOSTART:
     process.env.OPENSTRIKE_PSP_AUTOSTART ??
-    (features.length > 0 ? mapName : ""),
+    (features.some((feature) => feature !== "framebuffer16") ? mapName : ""),
   // pocketjs-psp's build.rs runs as a dependency; nativePocketContract keeps
   // the JS bundle and custom host on the same resolved target contract.
   POCKETJS_CAPTURE_INPUT: "",
@@ -166,6 +172,8 @@ await $`${toolchain.rustup} run ${toolchain.manifest.rust.toolchain} cargo psp $
 
 const profile = release ? "release" : "debug";
 const ebootDir = `${pspDir}target/mipsel-sony-psp/${profile}`;
+const { verifyPspPrx } = await import("../vendor/pocketjs/tools/psp-prx.ts");
+verifyPspPrx(new Uint8Array(await Bun.file(`${ebootDir}/openstrike-psp.prx`).arrayBuffer()));
 mkdirSync(`${ebootDir}/maps`, { recursive: true });
 for (const f of readdirSync(`${ebootDir}/maps`).filter((f) => f.endsWith(".p3d") && !mapFiles.includes(f))) {
   rmSync(`${ebootDir}/maps/${f}`);

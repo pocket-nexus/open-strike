@@ -3,7 +3,9 @@
 //! input are scripted. Alternate winning and losing rounds; no fake events.
 use glam::Vec3;
 use openstrike_core::sim::{GameEvent, Phase, SimInput};
-use openstrike_core::{Bot, StrikeSim};
+#[cfg(not(feature = "encounter-bench"))]
+use openstrike_core::Bot;
+use openstrike_core::StrikeSim;
 
 pub struct CombatProbe {
     initialized: bool,
@@ -36,16 +38,20 @@ impl CombatProbe {
             self.started = sim.time;
             self.reloaded = false;
             sim.player.pitch = 0.0;
+            #[cfg(not(feature = "encounter-bench"))]
             let forward = sim.player.forward_flat();
+            #[cfg(not(feature = "encounter-bench"))]
             let right = sim.player.right();
             // Two rounds at ordinary range, then two at close range with a
             // wider camera turn between targets. Both alternate win/loss.
+            #[cfg(not(feature = "encounter-bench"))]
             let distance = if self.round % 4 < 2 { 185.0 } else { 80.0 };
             #[cfg(feature = "approach-bench")]
             let distance = {
                 let _ = distance;
                 128.0
             };
+            #[cfg(not(feature = "encounter-bench"))]
             for (i, bot) in sim.bots.iter_mut().enumerate() {
                 let shift = if cfg!(feature = "approach-bench") {
                     i as f32

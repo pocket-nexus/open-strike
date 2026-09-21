@@ -3,7 +3,6 @@
 
 extern crate alloc;
 extern crate self as libquickjs_sys;
-extern crate self as pocketjs_psp;
 
 mod input;
 #[cfg(feature = "embedded-map-catalog")]
@@ -17,7 +16,11 @@ pub use quickjs::*;
 mod present_data;
 #[path = "../../openstrike-vita/src/sim_boot.rs"]
 mod sim_boot;
-#[allow(clippy::manual_c_str_literals, clippy::missing_safety_doc)]
+#[allow(
+    clippy::manual_c_str_literals,
+    clippy::missing_safety_doc,
+    unexpected_cfgs
+)]
 #[path = "../../openstrike-psp/src/strike.rs"]
 mod strike;
 
@@ -171,7 +174,11 @@ unsafe fn dispatch_tick(state: &mut State, native_keys: u32, buttons: u32) -> bo
 
 unsafe fn apply_pending_host(state: &mut State) -> Result<(), ()> {
     match state.pending_host.take() {
-        Some(strike::HostCmd::LoadMap(index)) if valid_map_index(index) => {
+        Some(strike::HostCmd::LoadMap {
+            map: index,
+            mod_index: 0,
+            crossplay: false,
+        }) if valid_map_index(index) => {
             shutdown_game(state)?;
             let mut game = load_game(state, index)?;
             game.world.initialize_gpu().map_err(|_| ())?;
@@ -291,7 +298,10 @@ unsafe extern "C" fn boot(
         .collect();
     #[cfg(not(feature = "embedded-map-catalog"))]
     let map_names = [String::from(MAP_NAME)];
-    strike::register(context, global, &map_names);
+    if !strike::register(context, global, &map_names, strike::HostConfig::CLASSIC) {
+        JS_FreeValue(context, global);
+        return 0;
+    }
 
     STATE = Some(State {
         context,

@@ -10,8 +10,8 @@ use core::mem::MaybeUninit;
 
 mod read;
 
-use openstrike_core::StrikeSim;
 use openstrike_core::sim::Command;
+use openstrike_core::StrikeSim;
 use pocket3d_bsp::cooked;
 use pocket3d_gu::WorldRenderer;
 use psp::sys::{self, IoOpenFlags};
@@ -51,10 +51,9 @@ pub unsafe fn scan() -> (Vec<String>, u32) {
             }
             let raw = &ent.d_name;
             let len = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
-            let name = core::str::from_utf8(
-                core::slice::from_raw_parts(raw.as_ptr() as *const u8, len),
-            )
-            .unwrap_or("");
+            let name =
+                core::str::from_utf8(core::slice::from_raw_parts(raw.as_ptr() as *const u8, len))
+                    .unwrap_or("");
             // FAT-backed roots report 8.3-fitting names UPPERCASE
             // (DE_DUST2.P3D); every target filesystem here is
             // case-insensitive, so normalize to lowercase throughout.
@@ -79,11 +78,18 @@ pub unsafe fn scan() -> (Vec<String>, u32) {
 
 /// Load `<root>/maps/<name>.p3d` into the shared buffer and build the world:
 /// cooked view, renderer, and a fresh simulation with the boot configuration
-/// replayed. The caller guarantees no previous Game still borrows the buffer.
+/// replayed.
+///
+/// # Safety
+/// Both buffers must be valid, disjoint, 16-byte-aligned allocations for their
+/// declared capacities. No previous Game or in-flight GE command may borrow
+/// either region. They must remain alive until the returned Game is dropped.
 pub unsafe fn load(
     name: &str,
     buf_ptr: *mut u8,
     buf_cap: usize,
+    texture_ptr: *mut u8,
+    texture_cap: usize,
     boot_cfg: &[Command],
 ) -> Result<Game, &'static str> {
     let path = zpath(ROOTS[ACTIVE_ROOT], name, ".p3d");
@@ -95,7 +101,11 @@ pub unsafe fn load(
     // by successful reads becomes a byte slice for the cooked-map parser.
     let buffer = core::slice::from_raw_parts_mut(buf_ptr.cast::<MaybeUninit<u8>>(), buf_cap);
     let loaded = read::read_into(buffer, |target| {
-        let n = sys::sceIoRead(fd, target.as_mut_ptr().cast::<c_void>(), target.len() as u32);
+        let n = sys::sceIoRead(
+            fd,
+            target.as_mut_ptr().cast::<c_void>(),
+            target.len() as u32,
+        );
         if n < 0 {
             Err("map read failed")
         } else {
@@ -125,6 +135,13 @@ pub unsafe fn load(
     // after the guest's configuration, as reset_round does for later rounds.
     sim.spawn_bots(0);
     sim.weapon.reset();
-    let world = WorldRenderer::new(map);
-    Ok(Game { sim, world })
+    // The caller also guarantees no previous renderer borrows this VRAM.
+    let texture_memory = core::slice::from_raw_parts_mut(texture_ptr, texture_cap);
+    let world = WorldRenderer::new_cached(map, texture_memory);
+    let map_key = openstrike_core::net::map_key(data)?;
+    Ok(Game {
+        sim,
+        world,
+        map_key,
+    })
 }

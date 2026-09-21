@@ -34,8 +34,10 @@ libm = "0.2"
 [features]
 # Deterministic frame-dump build for scripts/e2e-psp.ts (PPSSPPHeadless).
 capture = []
+# Native 480x272 RGB565 buffers with ordered dithering.
+framebuffer16 = []
 # Rolling frame-time windows to host0:/OpenStrike-bench.jsonl (hardware).
-bench = []
+bench = ["pocket3d-gu/profile"]
 # Per-frame diagnostic I/O perturbs cadence; keep it out of normal benchmarks.
 bench-spikes = ["bench"]
 # Repeatable actor count/clip scene, never enabled in ordinary builds.
@@ -44,6 +46,8 @@ character-bench = ["bench"]
 proximity-bench = ["character-bench"]
 # Real simulation, weapon traces and JS round rules with scripted opponents/input.
 combat-bench = ["bench"]
+# Real authored spawn positions; only aim and trigger are automated.
+encounter-bench = ["combat-bench"]
 # Real movement approaches/retreats while the bot attacks; no fake hit events.
 approach-bench = ["combat-bench"]
 
@@ -52,3 +56,10 @@ motion-bench = ["bench"]
 
 # Fixed spawn/camera comparison, ignoring hardware input.
 idle-bench = ["bench"]
+
+# Authored camera viewpoints, 360-degree sweeps at each point.
+map-bench = ["bench"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
