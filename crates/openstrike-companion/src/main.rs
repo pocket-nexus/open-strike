@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, ensure};
+use openstrike_core::clock::{FixedClock, TICK_HZ};
 use openstrike_core::net::{Duel, map_key};
 use serde::Deserialize;
 use std::{
@@ -108,14 +109,15 @@ fn main() -> Result<()> {
     let listener = TcpListener::bind(("127.0.0.1", port))?;
     listener.set_nonblocking(true)?;
     println!(
-        "Companion ready: {} map={} identity={}",
+        "Companion ready: {} map={} identity={} tickHz={}",
         listener.local_addr()?,
         map.name,
-        map_id
+        map_id,
+        TICK_HZ
     );
     let mut connections: Vec<Connection> = Vec::with_capacity(4);
-    let step = Duration::from_nanos(1_000_000_000 / 64);
-    let mut next = Instant::now() + step;
+    let started = Instant::now();
+    let mut clock = FixedClock::new(0);
     loop {
         if connections.len() < 4 {
             match listener.accept() {
@@ -154,15 +156,8 @@ fn main() -> Result<()> {
                 i += 1;
             }
         }
-        let now = Instant::now();
-        let mut ticks = 0;
-        while now >= next && ticks < 4 {
+        for _ in 0..clock.advance(started.elapsed().as_micros() as u64) {
             room.step(&map.collision);
-            next += step;
-            ticks += 1;
-        }
-        if now >= next {
-            next = now + step;
         }
         std::thread::sleep(Duration::from_millis(1));
     }

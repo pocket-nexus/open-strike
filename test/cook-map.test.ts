@@ -20,6 +20,12 @@ test("map cache tracks WAD content, additions, removal, and cooker changes despi
     writeFileSync(join(cooker, "crates", crate, "src/lib.rs"), "source");
   }
   const key = () => mapCookKey(source, [join(root, "support")], cooker);
+  const override = join(root, "override");
+  mkdirSync(override);
+  writeFileSync(join(override, "base.wad"), "override pixels");
+  const ordered = mapCookKey(source, [join(root, "support"), override], cooker);
+  const reversed = mapCookKey(source, [override, join(root, "support")], cooker);
+  expect(ordered).not.toBe(reversed);
   const first = key();
   writeFileSync(wad, "after!"); utimesSync(wad, 0, 0);
   expect(key()).not.toBe(first);

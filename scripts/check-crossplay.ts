@@ -24,17 +24,19 @@ const server = Bun.spawn([resolve(root, "target/debug/openstrike-companion"), re
 const reader = server.stdout.getReader(), first = await reader.read(); reader.releaseLock();
 const ready = new TextDecoder().decode(first.value), address = ready.match(/Companion ready: (127\.0\.0\.1:\d+)/)?.[1];
 if (!address) { server.kill(); throw Error("Server did not start: " + ready); }
+const tickHz = Number(ready.match(/tickHz=(\d+)/)?.[1]);
+if (!Number.isInteger(tickHz) || tickHz <= 0) { server.kill(); throw Error("Server omitted its simulation clock"); }
 const config = resolve(out, "desktop.json");writeFileSync(config, JSON.stringify({ address, key, slot: 0 }), { mode: 0o600 });
 const provider = connectOffloadUsbProvider({ directory: out, app: "dev.pocket-stack.openstrike", worker: new URL("./crossplay-worker.ts", import.meta.url), data: { address, key, slot: 1 } });
 const desktop = Bun.spawn([resolve(root, "target/debug/openstrike"), "--map", resolve(bspPath), "--script", mode === "--combat" ? "crossplay-combat" : "crossplay", "--screenshot", resolve(out,"mac-crossplay.png"), "--size", "960x544"], {
   cwd: root, env: { ...process.env, OPENSTRIKE_COMPANION_CONFIG: config }, stdout: "pipe", stderr: "pipe",
 });
-let epoch = 0, generation = 0, serial = 0, boot = 914, next = 1, round = 0, inFlight = false, requests = 0, live = 0, maxPayload = 0;
+let epoch = 0, generation = 0, serial = 0, boot = 914, next = 1, received = 0, round = 0, inFlight = false, requests = 0, live = 0, maxPayload = 0;
 let history: number[][] = [], lastTick = 0, lastResponse = Date.now(), firstPosition: number[] | undefined, moved = false;
 const start = Date.now();
 try {
   while (Date.now() - start < 14000 && desktop.exitCode === null) {
-    const tick = Math.floor((Date.now()-start) * 64 / 1000);
+    const tick = Math.floor((Date.now()-start) * tickHz / 1000);
     while (lastTick < tick) {
       lastTick++;
       if (epoch) history.push([next++, lastTick < 160 ? 0.35 : 0, 0, Math.PI, 0, 0]);
@@ -44,7 +46,7 @@ try {
     try { readyBytes = readFileSync(resolve(provider.root, "ready")); } catch {}
     if (readyBytes && readyBytes.length === 64) generation = readyBytes.readUInt32LE(4);
     if (generation && !inFlight) {
-      const payload = JSON.stringify({ v: 1, map, epoch, inputs: epoch ? history.slice(0,12) : [] });
+      const payload = JSON.stringify({ v: 1, map, epoch, inputs: epoch ? history.filter(i=>i[0]>received).slice(0,12) : [] });
       maxPayload = Math.max(maxPayload, payload.length);
       const id = ++serial, packet = usbPacket(generation, boot, serial, id, Buffer.from(JSON.stringify({ v: 1, id, method:"strike.exchange", payload })));
       const path = resolve(provider.root, "req0"); writeFileSync(path+".tmp",packet);renameSync(path+".tmp",path);inFlight=true;requests++;
@@ -57,8 +59,8 @@ try {
           if (payload.length!==packet.readUInt32LE(32) || usbHash(payload)!==packet.readUInt32LE(36)) throw Error("USB checksum mismatch");
           const envelope = JSON.parse(payload.toString());
           if (envelope.error) throw Error(envelope.error);
-          const reply = JSON.parse(envelope.payload);epoch=reply.epoch;history=history.filter(i=>i[0]>reply.ack);
-          if (reply.round!==round) {round=reply.round;history=[];next=reply.ack+1;}
+          const reply = JSON.parse(envelope.payload);epoch=reply.epoch;received=reply.received;history=history.filter(i=>i[0]>reply.ack);
+          if (reply.round!==round) {round=reply.round;history=[];next=reply.received+1;}
           if (reply.playing) live++;
           const pos=reply.players[1].pos as number[];
           if (!firstPosition) firstPosition=pos;

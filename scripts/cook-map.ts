@@ -33,7 +33,8 @@ export function mapCookKey(source: string, wadDirs: readonly string[], cooker: s
   // Dependency resolution can change cooking without changing the source.
   files.add(resolve(cooker, "../Cargo.lock"));
   const inputs = [...files].sort().map((path) => [path, hashFile(path)]);
-  return createHash("sha256").update(JSON.stringify({ version: 1, subdivide: 32, inputs })).digest("hex");
+  // Search order selects the winning texture when WADs contain the same name.
+  return createHash("sha256").update(JSON.stringify({ version: 2, subdivide: 32, searchDirs: dirs, inputs })).digest("hex");
 }
 
 export function mapCacheMatches(cooked: string, key: string): boolean {

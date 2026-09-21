@@ -188,7 +188,18 @@ unsafe fn run() {
     let global = JS_GetGlobalObject(ctx);
     dbg::init();
     ffi::register(ctx, global, &textures, &sprites);
-    strike::register(ctx, global, &map_names);
+    if !strike::register(
+        ctx,
+        global,
+        &map_names,
+        strike::HostConfig {
+            mods: openstrike_mods::METADATA,
+            initial_mod: openstrike_mods::INITIAL,
+            network_supported: pocketjs_psp::offload::enabled(),
+        },
+    ) {
+        host::halt("cannot initialize strike catalogue");
+    }
     if !APP_PAK.is_empty() {
         let ab = JS_NewArrayBuffer(
             ctx,

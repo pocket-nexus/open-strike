@@ -180,7 +180,7 @@ export const strike = {
   /** Ask the host to load a cooked map and start a round (menu hosts). */
   loadMap: (index: number) => native.loadMap?.(index, selectedMod, Number(crossplay)),
   networkSupported: native.networkSupported ?? false,
-  selectNetwork: (enabled: boolean) => { if (current.phase === "menu") crossplay = enabled; },
+  selectNetwork: (enabled: boolean) => { if (current.phase === "menu") crossplay = enabled && (native.networkSupported ?? false); },
   networkSelected: () => crossplay,
   networkReply: (raw: string) => native.networkReply?.(raw),
   mods,

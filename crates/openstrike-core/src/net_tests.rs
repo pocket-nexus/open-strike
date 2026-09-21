@@ -78,6 +78,30 @@ fn exchange(room: &mut Duel, slot: usize, epoch: u32, inputs: Vec<Input>) -> Rep
     serde_json::from_str(&room.exchange(slot, &raw).unwrap()).unwrap()
 }
 #[test]
+fn round_change_does_not_reuse_inputs_queued_after_authority_reset() {
+    let col = floor(false);
+    let mut room = duel();
+    let mut sim = StrikeSim::new(room.players[0].player.state.pos, 0.0, vec![], 0);
+    let mut client = Client::new("fixture".into());
+    client.receive(&room.exchange(0, &client.request()).unwrap());
+    for _ in 0..5 {
+        client.tick(&mut sim, &col, &SimInput::default());
+    }
+    exchange(&mut room, 1, 0, vec![]);
+    room.step(&col); // New round clears the authority's old input queue.
+    let reply = room.exchange(0, &client.request()).unwrap();
+    let queued: Reply = serde_json::from_str(&reply).unwrap();
+    assert!(queued.received > queued.ack);
+    client.receive(&reply);
+    client.tick(&mut sim, &col, &SimInput::default());
+    let request: Request = serde_json::from_str(&client.request()).unwrap();
+    assert_eq!(request.inputs[0].0, queued.received + 1);
+    let accepted: Reply =
+        serde_json::from_str(&room.exchange(0, &client.request()).unwrap()).unwrap();
+    assert_eq!(accepted.received, queued.received + 1);
+}
+
+#[test]
 fn authority_damage_respawn_and_replayed_inputs() {
     let col = floor(false);
     let mut room = duel();
@@ -129,9 +153,10 @@ fn wall_blocks_hits_and_clock_prevents_request_speedup() {
 fn malformed_map_gap_epoch_and_stale_peer_are_rejected() {
     let mut room = duel();
     let col = floor(false);
-    assert!(room
-        .exchange(0, r#"{"v":1,"map":"wrong","epoch":0,"inputs":[]}"#)
-        .is_err());
+    assert!(
+        room.exchange(0, r#"{"v":1,"map":"wrong","epoch":0,"inputs":[]}"#)
+            .is_err()
+    );
     let a = exchange(&mut room, 0, 0, vec![]);
     exchange(&mut room, 1, 0, vec![]);
     let raw = serde_json::to_string(&Request {
@@ -260,7 +285,7 @@ fn usb_round_trip_does_not_accumulate_input_or_rejoin() {
 }
 #[test]
 fn map_identity_covers_collision_and_topology_not_texture_tessellation() {
-    use pocket3d_bsp::cooked::{tag, P3dWriter};
+    use pocket3d_bsp::cooked::{P3dWriter, tag};
     let bytes = |collision: u8, texture: u8| {
         let mut w = P3dWriter::new();
         for (name, data) in [

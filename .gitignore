@@ -22,5 +22,6 @@ crates/openstrike-vita/static/maps/
 crates/openstrike-symbian/target/
 # script/e2e outputs
 /out/
+/.pocket-build/
 /pocketjs-dbg/
 __pycache__/

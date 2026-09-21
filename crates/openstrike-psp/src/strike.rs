@@ -7,11 +7,11 @@
 
 use alloc::vec::Vec;
 
+use crate::ffi::{add_fn, arg_i32};
 use libquickjs_sys::*;
 use openstrike_core::bot::BotConfig;
 use openstrike_core::sim::{Command, GameEvent, Phase, StrikeSim};
 use openstrike_core::weapon::WeaponConfig;
-use pocketjs_psp::ffi::{add_fn, arg_i32};
 
 // Symbols the vendored libquickjs-sys omits (provided by the linked QuickJS
 // C library — the established local-extern pattern).
@@ -51,6 +51,24 @@ pub enum HostCmd {
 
 static mut HOST_CMDS: Vec<HostCmd> = Vec::new();
 
+/// The composition supplies resources and capabilities; this source is also
+/// compiled by the Vita, Symbian and 3DS hosts with their own QuickJS ABI.
+#[derive(Clone, Copy)]
+pub struct HostConfig {
+    pub mods: &'static str,
+    pub initial_mod: usize,
+    pub network_supported: bool,
+}
+impl HostConfig {
+    pub const CLASSIC: Self = Self {
+        mods: concat!("[", include_str!("../../../mods/classic.json"), "]"),
+        initial_mod: 0,
+        network_supported: false,
+    };
+}
+static mut HOST_CONFIG: HostConfig = HostConfig::CLASSIC;
+static mut MOD_COUNT: usize = 1;
+
 pub unsafe fn drain_host(mut apply: impl FnMut(HostCmd)) {
     for cmd in HOST_CMDS.drain(..) {
         apply(cmd);
@@ -67,11 +85,11 @@ unsafe extern "C" fn js_load_map(
     let mod_index = if argc > 1 {
         arg_i32(ctx, argc, argv, 1)
     } else {
-        openstrike_mods::INITIAL as i32
+        HOST_CONFIG.initial_mod as i32
     };
-    let crossplay = argc > 2 && arg_i32(ctx, argc, argv, 2) != 0;
+    let crossplay = HOST_CONFIG.network_supported && argc > 2 && arg_i32(ctx, argc, argv, 2) != 0;
     let mod_index = if crossplay { 0 } else { mod_index };
-    if i >= 0 && mod_index >= 0 && openstrike_mods::get(mod_index as usize).is_some() {
+    if i >= 0 && mod_index >= 0 && (mod_index as usize) < MOD_COUNT {
         HOST_CMDS.push(HostCmd::LoadMap {
             map: i as usize,
             mod_index: mod_index as usize,
@@ -273,9 +291,14 @@ unsafe extern "C" fn js_configure_bots(
 }
 
 /// Install `globalThis.strike` (intent ops; the SDK adds `__dispatch`).
-pub unsafe fn register(ctx: *mut JSContext, global: JSValue, maps: &[alloc::string::String]) {
+pub unsafe fn register(
+    ctx: *mut JSContext,
+    global: JSValue,
+    maps: &[alloc::string::String],
+    config: HostConfig,
+) -> bool {
     let obj = JS_NewObject(ctx);
-    let metadata = openstrike_mods::METADATA;
+    let metadata = config.mods;
     let mut source = metadata.as_bytes().to_vec();
     source.push(0);
     let mods = JS_ParseJSON(
@@ -285,14 +308,23 @@ pub unsafe fn register(ctx: *mut JSContext, global: JSValue, maps: &[alloc::stri
         b"mods.json\0".as_ptr() as *const _,
     );
     if JS_ValueGetTag(mods) == JS_TAG_EXCEPTION {
-        pocketjs_psp::host::halt("cannot initialize mod catalogue");
+        JS_FreeValue(ctx, obj);
+        return false;
     }
+    let count = get_i32(ctx, mods, b"length\0", 0);
+    if count <= 0 || config.initial_mod >= count as usize {
+        JS_FreeValue(ctx, mods);
+        JS_FreeValue(ctx, obj);
+        return false;
+    }
+    MOD_COUNT = count as usize;
+    HOST_CONFIG = config;
     set_val(ctx, obj, b"mods\0", mods);
     set_val(
         ctx,
         obj,
         b"initialMod\0",
-        JS_NewInt32(ctx, openstrike_mods::INITIAL as i32),
+        JS_NewInt32(ctx, config.initial_mod as i32),
     );
     for (i, name) in STATE_NAMES.iter().enumerate() {
         STATE_ATOMS[i] = JS_NewAtom(ctx, name.as_ptr() as *const _);
@@ -312,7 +344,7 @@ pub unsafe fn register(ctx: *mut JSContext, global: JSValue, maps: &[alloc::stri
         ctx,
         obj,
         b"networkSupported\0",
-        JS_NewBool(ctx, pocketjs_psp::offload::enabled()),
+        JS_NewBool(ctx, config.network_supported),
     );
     add_fn(ctx, obj, b"toMenu\0", js_to_menu, 0);
     // The cooked-map catalogue (menu hosts): strike.maps = ["de_dust2", …].
@@ -322,7 +354,7 @@ pub unsafe fn register(ctx: *mut JSContext, global: JSValue, maps: &[alloc::stri
         JS_SetPropertyUint32(ctx, arr, i as u32, v);
     }
     set_val(ctx, obj, b"maps\0", arr);
-    JS_SetPropertyStr(ctx, global, b"strike\0".as_ptr() as *const _, obj);
+    JS_SetPropertyStr(ctx, global, b"strike\0".as_ptr() as *const _, obj) >= 0
 }
 
 // State snapshots keep their public shape and allocation semantics. Intern

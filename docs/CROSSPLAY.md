@@ -49,7 +49,8 @@ Ctrl-C. An ordinary Memory Stick launch without PSPLINK has no USB transport.
 
 ## Simulation and recovery
 
-**The Companion advances the shared Rust simulation at 64 Hz.** Input cannot
+**The Companion and local hosts advance the shared Rust simulation at 60 Hz.**
+They use the same fixed clock and catch-up limit. Input cannot
 choose elapsed time, position, health, ammunition or damage. The server uses
 the same BSP hulls, movement law, spread, reload gate and hitscan traces as
 local play. It resolves simultaneous shots before applying either death.

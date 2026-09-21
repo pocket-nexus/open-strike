@@ -1,7 +1,7 @@
 //! Bounded two-player Companion protocol and client prediction. The room runs
-//! the same movement and rifle simulation as the local game at 64 Hz.
+//! the same movement and rifle simulation as the local game clock.
 use crate::{
-    clock::TICK_SECONDS, Bot, BotState, GameEvent, Phase, Player, SimInput, StrikeSim, Weapon,
+    Bot, BotState, GameEvent, Phase, Player, SimInput, StrikeSim, Weapon, clock::TICK_SECONDS,
 };
 use alloc::{collections::VecDeque, format, string::String, vec, vec::Vec};
 use glam::Vec3;
@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 pub const HISTORY: usize = 128;
 pub const BATCH: usize = 12;
 pub const PAYLOAD_LIMIT: usize = 2500;
-const STALE_TICKS: u32 = 128;
+const STALE_TICKS: u32 = (crate::clock::TICK_HZ * 2) as u32;
 
 /// Fingerprint the collision, hull-0 topology and spawn sections. Rendering
 /// tessellation and texture resolution may differ between the two hosts.
@@ -333,7 +333,9 @@ impl Client {
             sim.weapon.shot_age = me.shot;
             if round_changed {
                 self.history.clear();
-                self.next = reply.ack + 1;
+                // The authority may have queued inputs after resetting the
+                // round but before producing this reply. Never reuse those IDs.
+                self.next = reply.received + 1;
                 sim.effects.clear();
                 sim.player.yaw = me.angles[0];
                 sim.player.pitch = me.angles[1];
@@ -678,7 +680,7 @@ impl Duel {
                     player.alive = player.health > 0;
                     if !player.alive {
                         self.score[1 - i] += 1;
-                        self.restart = 192;
+                        self.restart = (crate::clock::TICK_HZ * 3) as u32;
                     }
                 }
             }
