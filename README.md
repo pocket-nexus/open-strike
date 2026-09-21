@@ -19,7 +19,7 @@ The full 3D game targets desktop (wgpu), PSP (sceGu), PS Vita
 (vita2d/GXM), and Nokia E7 (OpenGL ES 2). The bottom shot was captured
 on a real PSP.</em></p>
 
-A single-player CS-like FPS built on the **Pocket runtime family**: a Rust
+A CS-like FPS with offline bots and [Mac–PSP Companion crossplay](docs/CROSSPLAY.md), built on the **Pocket runtime family**: a Rust
 core (Pocket3D) simulates and renders; the *product* — round rules, weapon
 tables, difficulty, and the entire HUD — is JavaScript running in an embedded
 QuickJS guest. OpenStrike is the first specialized game runtime of
@@ -67,7 +67,8 @@ cd open-strike
 bun run setup      # installs the vendored framework deps + solid-js link
 bun run bootstrap  # install the pinned PSP toolchain into the shared cache
 bun run check:platforms
-bun run build:ui   # resolve PSP -> dist/pocket/psp/openstrike.{js,pak}
+bun run build:ui   # PSP -> dist/pocket/psp/openstrike.{js,pak}
+bun scripts/build-ui.ts --target macos-app  # desktop UI, host ABI 4 at 2× density
 bun scripts/build-ui.ts --target vita
 ```
 
@@ -75,6 +76,12 @@ If only previously cooked PSP maps are available, use
 `bun scripts/psp.ts --cooked-maps dist/maps --bench`. The pinned Pocket3D
 reader verifies every supplied `.p3d` before staging that map set beside the
 EBOOT. The default build still cooks from the BSP/WAD source directory.
+The cooker rejects missing textures on visible surfaces. For `cs_assault`,
+the source set must include **`cs_assault.wad`** as well as the Half-Life WADs.
+Place these files in the map's `support/` directory. Source builds cache a
+hash of the BSP, WAD inputs and cooker code; adding or replacing a WAD causes
+a new cook even when file timestamps are preserved. A pre-cooked `.p3d` with
+the cooker's missing-texture checkerboard is rejected before packaging.
 `OPENSTRIKE_COOKED_MAPS=dist/maps` selects the same input for
 `bun scripts/e2e-psp.ts` and `bun scripts/hw.ts`.
 
@@ -261,8 +268,8 @@ cargo run --release -p openstrike -- --maps-dir $MAPS --script lose   --screensh
 
 OpenStrike runs on an actual Sony PSP — same simulation, same JS rules, same
 JSX HUD, rendered by the sceGu backend (`pocket3d-gu`). Not a stripped-down
-demo: the identical `dist/pocket/psp/openstrike.js` bundle that drives the
-desktop build boots in QuickJS on the handheld. It ships as a proper EBOOT —
+demo: the same game sources compile into target-specific UI bundles for
+desktop and PSP, each checked against its native host contract. It ships as a proper EBOOT —
 branded XMB icon and backdrop, a main menu that lists every cooked map, and
 SELECT to return there mid-round.
 
@@ -371,3 +378,9 @@ grows by appending, never by renumbering.
 - Bot character: see [assets/models/CREDITS.md](assets/models/CREDITS.md).
 - Map/texture data (`.bsp`/`.wad`) is © Valve and must be provided from your
   own copy of the game.
+
+### Author maps in Blender
+
+See [Blender maps](docs/BLENDER_MAPS.md) for the Blender → Valve 220 → GoldSrc BSP →
+Pocket3D toolchain and the editable WWDC24 atrium, stairs and presentation-hall
+scene. Generated maps and `.blend` files stay outside Git.

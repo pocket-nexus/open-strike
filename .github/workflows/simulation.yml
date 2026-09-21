@@ -4,10 +4,13 @@ on:
   pull_request:
     paths:
       - "crates/openstrike-core/**"
+      - "crates/openstrike-companion/**"
       - "crates/openstrike-character/**"
       - "crates/openstrike-mods/**"
       - "mods/**"
       - "crates/openstrike-psp/**"
+      - "crates/openstrike-symbian/**"
+      - "crates/openstrike-vita/**"
       - "game/sdk.ts"
       - "test/strike-sdk.test.ts"
       - "vendor/pocketjs"
@@ -17,10 +20,13 @@ on:
     branches: [main]
     paths:
       - "crates/openstrike-core/**"
+      - "crates/openstrike-companion/**"
       - "crates/openstrike-character/**"
       - "crates/openstrike-mods/**"
       - "mods/**"
       - "crates/openstrike-psp/**"
+      - "crates/openstrike-symbian/**"
+      - "crates/openstrike-vita/**"
       - "game/sdk.ts"
       - "test/strike-sdk.test.ts"
       - "vendor/pocketjs"
@@ -42,6 +48,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: oven-sh/setup-bun@v2
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --locked -p openstrike-core -p openstrike-character -p openstrike-mods
+      - run: cargo test --locked -p openstrike-core -p openstrike-character -p openstrike-mods -p openstrike-companion
       - run: cargo check --locked -p openstrike-core --no-default-features --features libm
+      - run: cargo check --locked --manifest-path crates/openstrike-symbian/Cargo.toml --lib
       - run: bun test test/strike-sdk.test.ts

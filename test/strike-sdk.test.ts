@@ -56,6 +56,16 @@ test("tick dispatch keeps subscription snapshots and the published state", async
     for (const index of [-1, 2, 0.5, NaN])
       expect(strike.selectMod(index)).toBe(false);
     expect(commands).toEqual([]);
+    strike.selectNetwork(true);
+    expect(strike.networkSelected()).toBe(false);
+    native.networkSupported = true;
+    strike.selectNetwork(true);
+    expect(strike.networkSelected()).toBe(true);
+    native.__dispatch!({ ...second, phase: "live" }, []);
+    strike.selectNetwork(false);
+    expect(strike.networkSelected()).toBe(true);
+    native.__dispatch!({ ...second, phase: "menu" }, []);
+    strike.selectNetwork(false);
     for (let i = 0; i < 10; i++) {
       const index = i % 2;
       expect(strike.selectMod(index)).toBe(true);

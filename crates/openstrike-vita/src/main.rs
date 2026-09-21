@@ -218,7 +218,14 @@ mod vita {
         )));
 
         let mut runtime = Runtime::new(APP_PAK).unwrap_or_else(|error| fail(&error));
-        strike::register(runtime.context(), runtime.global(), &map_names);
+        if !strike::register(
+            runtime.context(),
+            runtime.global(),
+            &map_names,
+            strike::HostConfig::CLASSIC,
+        ) {
+            fail("cannot initialize strike catalogue");
+        }
         runtime.eval(APP_JS).unwrap_or_else(|error| fail(&error));
 
         // Configuration commands run synchronously during bundle evaluation;
@@ -420,7 +427,11 @@ mod vita {
             // Host intents are applied outside every renderer/map borrow. A
             // map reload can therefore safely reuse the single aligned arena.
             match host_command {
-                Some(strike::HostCmd::LoadMap(index)) if game.is_none() => {
+                Some(strike::HostCmd::LoadMap {
+                    map: index,
+                    mod_index: 0,
+                    crossplay: false,
+                }) if game.is_none() => {
                     if let Some(name) = map_names.get(index) {
                         match load_game(&catalogue, map_buffer, name, &boot_config) {
                             Ok(loaded) => game = Some(loaded),
