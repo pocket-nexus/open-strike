@@ -88,11 +88,16 @@ No gameplay or menu flow depends on the touchscreen.
 ```sh
 bun run test:e2e:vita
 VITA_E2E_SPEC=spawn bun run test:e2e:vita
+# If the macOS Vulkan/MoltenVK backend crashes during texture upload:
+VITA_E2E_BACKEND=OpenGL bun run test:e2e:vita
 ```
 
 The driver builds capture VPKs, installs each into an isolated VitaFS, boots
-the real QuickJS/input/simulation/render loop, waits for its `done` marker,
-and terminates only the spawned emulator. Every selected capture must be a
+the real QuickJS/input/simulation/render loop without the USB kernel driver,
+waits for its `done` marker,
+and terminates only the spawned emulator. Capture packages stay under
+`out/e2e-vita/build`, preserving the production VPK/SELF/runtime metadata used
+by the USB host. Every selected capture must be a
 960x544 RGBA frame with native-density detail and must match
 `test/goldens-vita` byte-for-byte. The native-detail assertion rejects a
 regression to a 480x272 frame duplicated into 2x2 pixel blocks. A scene sidecar

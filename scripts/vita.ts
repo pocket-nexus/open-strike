@@ -36,6 +36,7 @@ function value(name: string, fallback: string): string {
 const mapName = value("map", "de_dust2");
 const release = argv.includes("-r") || argv.includes("--release");
 const usbDebug = !argv.includes("--no-usb-debug");
+const outputDir = resolve(repo, value("out-dir", "dist/vita"));
 const configured: unknown = JSON.parse(process.env.OPENSTRIKE_MOD_PACKS ?? "[]");
 if (!Array.isArray(configured) || configured.some((p) => typeof p !== "string" || !p))
   throw new Error("OPENSTRIKE_MOD_PACKS must be an array of manifest paths");
@@ -172,11 +173,11 @@ await packageVitaVpk({
   usbDriver: usb?.driver,
 });
 
-const packaged = `${repo}dist/vita/OpenStrike.vpk`;
-mkdirSync(`${repo}dist/vita`, { recursive: true });
+const packaged = `${outputDir}/OpenStrike.vpk`;
+mkdirSync(outputDir, { recursive: true });
 cpSync(artifact, packaged);
-cpSync(eboot, `${repo}dist/vita/OpenStrike.self`);
-await Bun.write(`${repo}dist/vita/OpenStrike.runtime.json`, JSON.stringify({
+cpSync(eboot, `${outputDir}/OpenStrike.self`);
+await Bun.write(`${outputDir}/OpenStrike.runtime.json`, JSON.stringify({
   version: 1, titleId: "OPSK00001", applicationId: plan.app.id,
   output: pocketPlan.appOutput, nativeBuild, plan,
   self: "OpenStrike.self", usbDebug, usbDriver: usb?.fingerprint,
@@ -184,5 +185,5 @@ await Bun.write(`${repo}dist/vita/OpenStrike.runtime.json`, JSON.stringify({
 }, null, 2) + "\n");
 // PocketJS's installer addresses VPKs by the resolved output name.
 if (pocketPlan.appOutput !== "OpenStrike")
-  cpSync(artifact, `${repo}dist/vita/${pocketPlan.appOutput}.vpk`);
+  cpSync(artifact, `${outputDir}/${pocketPlan.appOutput}.vpk`);
 console.log(`output: ${packaged}`);
