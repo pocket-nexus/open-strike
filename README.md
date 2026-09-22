@@ -418,18 +418,35 @@ as desktop and PSP. Pocket3D renders at Vita's native 960×544, while the
 PocketJS UI keeps its 480×272 logical layout and rasterizes at Vita's native
 2× density. Text, curves and rounded corners therefore use the full 960×544
 pixel grid instead of duplicating PSP pixels. There is no letterboxing or
-crop. Touch is not implemented yet; both sticks, shoulders, d-pad, face
-buttons and SELECT cover gameplay and menus.
+crop. Both sticks, shoulders, d-pad, face buttons and SELECT cover gameplay
+and menus. The standalone `OPSK00001` application includes USB debugging
+by default; L + R + SELECT opens the native recovery menu.
 
 ```sh
 export VITASDK="$HOME/vitasdk"
 export PATH="$VITASDK/bin:$HOME/.cargo/bin:$PATH"
 
 OPENSTRIKE_MAPS=~/path/to/cs-maps bun scripts/vita.ts --release # resolved Vita plan → VPK
+OPENSTRIKE_COOKED_MAPS=dist/maps bun run vita:dev build --mod .pocket/mods/frieren/mod.json --mod .pocket/mods/pikachu/mod.json
+bun run vita:dev install --mount /Volumes/PSV
+# Install the staged VPK in VitaShell, then launch OpenStrike.
+bun run vita:dev serve
+# From another terminal:
+bun run vita:dev status
+bun run vita:dev push
+bun run vita:dev capture --out .pocket-build/validation/vita-wired/frame.png
+bun run vita:dev native
 bun scripts/e2e-vita.ts
 ```
 
-The VPK is written to `dist/vita/OpenStrike.vpk`. PocketJS's shared Vita
+The VPK is written to `dist/vita/OpenStrike.vpk`, beside its SELF and
+`OpenStrike.runtime.json`. USB status includes game and frame timing data;
+`push`/`watch` reload the complete guest and return to the menu. A failed
+evaluation or first frame restores the previous guest. `native` replaces
+the SELF through PocketJS's A/B slots and retains the installed recovery
+`eboot.bin`. `--no-usb-debug` builds without the driver. Local mod packs
+share character animation, staff/ball weapons and feathered effects with
+PSP and 3DS. PocketJS's shared Vita
 packager combines OpenStrike's branded 128×128 icon and cooked maps with the
 framework's black 840×500 background, 280×158 startup image, and LiveArea
 template. The Vita3K golden driver uses an isolated VitaFS, scripted dual-stick
@@ -440,7 +457,7 @@ the pinned toolchain, controls and emulator-capture details.
 
 ## Modding, v0.1 shape
 
-PSP packages can include [selectable mod packs](docs/MODS.md): choose a
+PSP, Vita and 3DS packages can include [selectable mod packs](docs/MODS.md): choose a
 character, first-person weapon and shot presentation together at game
 initialization. The local Frieren example pairs one opponent with a
 Blender-authored staff and Zoltraak effects. A second Blender recipe adds

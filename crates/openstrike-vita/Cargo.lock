@@ -114,6 +114,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "openstrike-mods"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "openstrike-character",
+ "openstrike-core",
+ "serde_json",
+]
+
+[[package]]
 name = "openstrike-vita"
 version = "0.1.0"
 dependencies = [
@@ -121,9 +131,11 @@ dependencies = [
  "libquickjs-sys",
  "openstrike-character",
  "openstrike-core",
+ "openstrike-mods",
  "pocket3d-bsp",
  "pocket3d-vita",
  "pocketjs-vita",
+ "serde_json",
  "vita2d-sys",
  "vitasdk-sys",
 ]
@@ -161,6 +173,8 @@ version = "0.1.0"
 dependencies = [
  "libquickjs-sys",
  "pocketjs-core",
+ "serde",
+ "serde_json",
  "vita2d-sys",
  "vitasdk-sys",
 ]

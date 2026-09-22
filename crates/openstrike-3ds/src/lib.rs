@@ -4,7 +4,6 @@
 extern crate alloc;
 
 mod input;
-mod perf;
 mod radar;
 mod touch;
 mod world;

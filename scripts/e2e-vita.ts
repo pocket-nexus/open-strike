@@ -413,7 +413,7 @@ function assertLookProbe(
 let failures = 0;
 for (const spec of selectedSpecs) {
   console.log(`\n## ${spec.name} (input: ${spec.input})`);
-  await $`bun scripts/vita.ts --capture --release --map de_dust2`
+  await $`bun scripts/vita.ts --capture --no-usb-debug --release --map de_dust2`
     .cwd(repo)
     .env({
       ...process.env,
