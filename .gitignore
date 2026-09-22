@@ -24,4 +24,6 @@ crates/openstrike-symbian/target/
 /out/
 /.pocket-build/
 /pocketjs-dbg/
+
+/crates/openstrike-3ds/target/
 __pycache__/

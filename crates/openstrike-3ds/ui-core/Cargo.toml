@@ -1,0 +1,12 @@
+[package]
+name = "openstrike-3ds-ui"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+path = "../../../vendor/pocketjs/hosts/3ds/core/src/lib.rs"
+crate-type = ["rlib"]
+
+[dependencies]
+pocketjs-core = { path = "../../../vendor/pocketjs/engine/core" }

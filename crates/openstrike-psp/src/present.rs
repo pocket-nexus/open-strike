@@ -6,10 +6,9 @@
 use alloc::vec::Vec;
 
 use glam::{Mat4, Vec3};
-use openstrike_core::muzzle;
-use openstrike_core::weapon::{EffectKind, FxBeam, FxSprite, GUN_COLORS, rifle_boxes};
+use openstrike_core::weapon::{rifle_boxes, GUN_COLORS};
 use openstrike_core::{Bot, StrikeSim};
-use pocket3d_gu::mesh::{ColorVert, clear_depth_for_viewmodel, draw_color_tris};
+use pocket3d_gu::mesh::{clear_depth_for_viewmodel, draw_color_tris, ColorVert};
 use pocket3d_gu::{Camera3d, FramePool};
 use psp::sys::{self, BlendFactor, BlendOp, GuState, ShadingModel};
 
@@ -332,12 +331,8 @@ impl CharacterRenderer {
 
 /// Retained CPU scratch; the frame pool owns each submitted GPU copy.
 pub struct EffectRenderer {
-    world: Vec<ColorVert>,
-    viewmodel: Vec<ColorVert>,
-    sprites: Vec<FxSprite>,
-    beams: Vec<FxBeam>,
+    geometry: openstrike_core::effect_geometry::EffectGeometry<ColorVert>,
 }
-
 fn effect_vertex(p: Vec3, color: [f32; 4]) -> ColorVert {
     ColorVert {
         color: abgr_f(color),
@@ -346,117 +341,18 @@ fn effect_vertex(p: Vec3, color: [f32; 4]) -> ColorVert {
         z: p.z,
     }
 }
-
 impl EffectRenderer {
     pub fn new() -> Self {
         Self {
-            world: Vec::with_capacity(openstrike_core::energy::MAX_FOCUS_VERTICES * 8),
-            viewmodel: Vec::with_capacity(openstrike_core::energy::MAX_FOCUS_VERTICES),
-            sprites: Vec::with_capacity(32),
-            beams: Vec::with_capacity(32),
+            geometry: Default::default(),
         }
     }
-
     pub fn prepare(&mut self, sim: &StrikeSim, cam: &Camera3d) {
-        self.world.clear();
-        self.viewmodel.clear();
-        self.sprites.clear();
-        self.beams.clear();
-        let fwd = cam.forward();
-        let right = fwd.cross(Vec3::Y).normalize_or_zero();
-        let up = right.cross(fwd);
-        for effect in &sim.effects.list {
-            if let EffectKind::MuzzleFlash { pos } = effect.kind {
-                let out = if effect.viewmodel {
-                    &mut self.viewmodel
-                } else {
-                    &mut self.world
-                };
-                let mut emit = |v: muzzle::FlameVertex| {
-                    let p = if effect.viewmodel {
-                        sim.presentation.muzzle + v.position
-                    } else {
-                        pos + right * v.position.x + up * v.position.y - fwd * v.position.z
-                    };
-                    out.push(effect_vertex(p, v.color));
-                };
-                if sim.presentation.shot == openstrike_core::presentation::ShotStyle::Beam {
-                    openstrike_core::energy::focus(effect.age, effect.ttl, &mut emit);
-                } else {
-                    muzzle::emit(effect.age, effect.ttl, effect.variant, &mut emit);
-                }
-            } else if sim.presentation.shot != openstrike_core::presentation::ShotStyle::Flame {
-                match effect.kind {
-                    EffectKind::Tracer { a, b } => {
-                        let a = if effect.viewmodel {
-                            sim.viewmodel_transform_at(1.0)
-                                .transform_point3(sim.presentation.muzzle)
-                        } else {
-                            a
-                        };
-                        openstrike_core::energy::beam(a, b, effect.age, effect.ttl, |v| {
-                            self.world.push(effect_vertex(v.position, v.color))
-                        });
-                    }
-                    EffectKind::Impact { pos } | EffectKind::BloodPuff { pos } => {
-                        openstrike_core::energy::focus(effect.age, effect.ttl, |v| {
-                            self.world.push(effect_vertex(
-                                pos + right * v.position.x + up * v.position.y,
-                                if sim.presentation.shot
-                                    == openstrike_core::presentation::ShotStyle::Orb
-                                {
-                                    [1.0, 0.84, 0.30, v.color[3]]
-                                } else {
-                                    v.color
-                                },
-                            ))
-                        });
-                    }
-                    _ => {}
-                }
-            } else {
-                effect.emit(&mut self.sprites, &mut self.beams);
-            }
-        }
-        if sim.weapon.reloading()
-            && sim.presentation.motion == openstrike_core::presentation::ViewMotion::Staff
-        {
-            let progress = sim.reload_frac();
-            let angle = progress * core::f32::consts::TAU;
-            let rotation = Mat4::from_rotation_z(angle);
-            openstrike_core::energy::focus(0.0, 1.0, |v| {
-                let p = sim.presentation.muzzle
-                    + Vec3::Z * 5.0
-                    + rotation.transform_vector3(v.position * (1.10 + 0.60 * progress));
-                let mut color = v.color;
-                color[3] *= (progress * 8.0).min(1.0) * (0.65 + 0.35 * progress);
-                self.viewmodel.push(effect_vertex(p, color));
-            });
-        }
-        let mut quad = |a: Vec3, b: Vec3, c: Vec3, d: Vec3, color: [f32; 4]| {
-            for p in [a, b, c, a, c, d] {
-                self.world.push(effect_vertex(p, color));
-            }
-        };
-        for s in &self.sprites {
-            let r = right * (s.size * 0.5);
-            let u = up * (s.size * 0.5);
-            quad(
-                s.pos - r - u,
-                s.pos + r - u,
-                s.pos + r + u,
-                s.pos - r + u,
-                s.color,
-            );
-        }
-        for b in &self.beams {
-            let side = (b.b - b.a).cross(fwd).normalize_or_zero() * (b.width * 0.5);
-            quad(b.a - side, b.b - side, b.b + side, b.a + side, b.color);
-        }
+        self.geometry
+            .prepare(sim, cam.forward(), 1.0, effect_vertex);
     }
-
     pub unsafe fn draw_world(&self, pool: &mut FramePool) {
-        draw_additive(pool, &self.world, Mat4::IDENTITY);
+        draw_additive(pool, &self.geometry.world, Mat4::IDENTITY);
     }
 }
 
@@ -500,5 +396,5 @@ pub unsafe fn draw_viewmodel(
     clear_depth_for_viewmodel();
     let model = sim.viewmodel_transform_at(1.0);
     draw_color_tris(pool, rifle, model);
-    draw_additive(pool, &effects.viewmodel, model);
+    draw_additive(pool, &effects.geometry.viewmodel, model);
 }

@@ -5,6 +5,8 @@ import { createSignal, onCleanup, Show } from "solid-js";
 import Hud from "./hud.tsx";
 import MainMenu from "./menu.tsx";
 import { strike } from "./sdk.ts";
+import { hasFeature } from "@pocketjs/framework/platform";
+import Radar from "./radar.tsx";
 
 export default function OpenStrikeScreen() {
   let menu = strike.state().phase === "menu";
@@ -14,8 +16,11 @@ export default function OpenStrikeScreen() {
     if (next !== menu) { menu = next; setInMenu(next); }
   }));
   return (
-    <Show when={!inMenu()} fallback={<MainMenu />}>
-      <Hud />
-    </Show>
+    <>
+      <Show when={!inMenu()} fallback={<MainMenu />}>
+        <Hud />
+      </Show>
+      {hasFeature("display.auxiliary") && <Radar />}
+    </>
   );
 }

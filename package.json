@@ -14,6 +14,10 @@
     "test:symbian": "bun test test/symbian-tooling.test.ts",
     "test:vita-package": "bun test test/openstrike-vita-artwork.test.ts",
     "test:e2e:vita": "bun scripts/e2e-vita.ts",
-    "test:psp-toolchain": "bun test test/psp-toolchain.test.ts"
+    "test:psp-toolchain": "bun test test/psp-toolchain.test.ts",
+    "build:3ds": "bun scripts/3ds.ts",
+    "test:3ds": "python3 -B -m unittest discover -s test -p test_3ds_deploy.py && bun test test/3ds-tooling.test.ts test/tactical-touch.test.ts && cargo test --locked --manifest-path crates/openstrike-3ds/Cargo.toml",
+    "test:e2e:3ds": "bun scripts/e2e-3ds.ts",
+    "deploy:3ds": "python3 scripts/deploy-3ds.py"
   }
 }

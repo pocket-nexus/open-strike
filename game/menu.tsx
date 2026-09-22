@@ -5,7 +5,7 @@
 import { createSignal, For, Show, onCleanup, onMount } from "solid-js";
 import { Text, View } from "@pocketjs/framework/components";
 import { pushFocusGrid, pushFocusScope } from "@pocketjs/framework/input";
-import { platform } from "@pocketjs/framework/platform";
+import { hasFeature, platform } from "@pocketjs/framework/platform";
 import { onButtonPress } from "@pocketjs/framework/lifecycle";
 import { strike } from "./sdk.ts";
 
@@ -156,7 +156,7 @@ function ModMenu(props: { onSelect(): void; onBack(): void }) {
 
         </View>
         <Text class="text-xs mt-3 tracking-wide" style={{ textColor: DIM }}>
-          ↑↓ SELECT · ○ CONTINUE
+          {hasFeature("display.auxiliary") ? "↑↓ SELECT · A CONTINUE" : "↑↓ SELECT · ○ CONTINUE"}
         </Text>
       </View>
     </View>
@@ -165,12 +165,15 @@ function ModMenu(props: { onSelect(): void; onBack(): void }) {
 
 function MapMenu(props: { onBack(): void }) {
   const [loading, setLoading] = createSignal(-1);
+  const [error, setError] = createSignal("");
+  onCleanup(strike.onMapError((message) => { setLoading(-1); setError(message); }));
   onButtonPress(0x0001, () => {
     if (loading() < 0) props.onBack();
   });
   const deploy = (i: number) => {
     if (loading() >= 0) return;
     setLoading(i);
+    setError("");
     strike.loadMap(i);
   };
 
@@ -267,7 +270,7 @@ function MapMenu(props: { onBack(): void }) {
                 ↕↔ SELECT
               </Text>
               <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
-                ○ DEPLOY
+                {hasFeature("display.auxiliary") ? "A DEPLOY" : "○ DEPLOY"}
               </Text>
               <Show when={true}>
                 <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
@@ -294,6 +297,9 @@ function MapMenu(props: { onBack(): void }) {
               SHIFT WALK · BACKSPACE/HOME MENU
             </Text>
           </View>
+        </Show>
+        <Show when={error()}>
+          <Text class="text-xs text-[#fbbf24]">{error()} · TRY AGAIN</Text>
         </Show>
       </View>
     </View>

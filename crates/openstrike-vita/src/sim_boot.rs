@@ -16,5 +16,7 @@ pub fn from_map(map: &CookedMap<'_>, boot_config: &[Command]) -> Result<StrikeSi
     for command in boot_config {
         sim.apply(command.clone(), 0);
     }
+    // Configuration changes take effect at this world initialization boundary.
+    sim.reset_round(0);
     Ok(sim)
 }

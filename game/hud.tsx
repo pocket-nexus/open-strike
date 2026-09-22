@@ -5,13 +5,13 @@
 // Native tweens advance damage/feed fades without per-frame JS calls.
 // Class strings remain full literals for the Tailwind subset compiler.
 
-import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, createRenderEffect, onCleanup, onMount, Show } from "solid-js";
 import { Text, View } from "@pocketjs/framework/components";
 import * as hot from "@pocketjs/framework/hot";
 import { animate, jump, createJumpBatch, type JumpBatch } from "@pocketjs/framework/animation";
 import { pushFocusScope } from "@pocketjs/framework/input";
 import { onButtonPress, onFrame } from "@pocketjs/framework/lifecycle";
-import { platform } from "@pocketjs/framework/platform";
+import { hasFeature, platform } from "@pocketjs/framework/platform";
 import { strike, profileHud } from "./sdk.ts";
 import { ROUND_FREEZE, ROUND_END_PAUSE, phaseAge } from "./rules.ts";
 
@@ -53,6 +53,8 @@ export default function Hud() {
   // SELECT opens/closes the quit dialog (BTN.SELECT = 0x0001). The mount is
   // structural but user-initiated — never on the combat hot path.
   const [dialog, setDialog] = createSignal(false);
+  createRenderEffect(() => strike.blockTouch(dialog()));
+  onCleanup(() => strike.blockTouch(false));
   onButtonPress(0x0001, () => setDialog((d) => !d));
 
   // One owner per value: static JSX initial values, then the hot path.
@@ -632,7 +634,7 @@ function QuitDialog(props: { onStay: () => void; onQuit: () => void }) {
           when={IS_SYMBIAN_E7}
           fallback={
             <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
-              ↔ SELECT · ○ CONFIRM · SELECT CLOSE
+              {hasFeature("display.auxiliary") ? "↔ SELECT · A CONFIRM · SELECT CLOSE" : "↔ SELECT · ○ CONFIRM · SELECT CLOSE"}
             </Text>
           }
         >

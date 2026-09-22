@@ -65,6 +65,10 @@ export interface ModDefinition {
 }
 
 export interface NativeStrike {
+  /** Auxiliary-screen telemetry and intents; absent on single-screen hosts. */
+  __radar?: (state: RadarState | undefined) => void;
+  __mapError?: (message: string) => void;
+  touchInput?(buttons: number, lookX: number, lookY: number): void;
   /** Complete packs this host can render, in native resource order. */
   mods?: readonly ModDefinition[];
   initialMod?: number;
@@ -118,6 +122,27 @@ let current: StrikeState = {
 type Handler = (e: StrikeEvent) => void;
 type TickHandler = (s: StrikeState) => void;
 const handlers = new Map<string, Set<Handler>>();
+export interface RadarState {
+  map: string;
+  texture: number;
+  floor: number;
+  x: number;
+  y: number;
+  yaw: number;
+  loading: number;
+  bots: { x: number; y: number; height: number }[];
+}
+let radar: RadarState | undefined;
+let touchBlocked = false;
+const radarHandlers = new Set<(state: RadarState | undefined) => void>();
+const mapErrorHandlers = new Set<(message: string) => void>();
+native.__radar = (state) => {
+  radar = state;
+  for (const handler of radarHandlers) handler(state);
+};
+native.__mapError = (message) => {
+  for (const handler of mapErrorHandlers) handler(message);
+};
 const tickHandlers = new Set<TickHandler>();
 let tickSnapshot: TickHandler[] = [];
 let ticksChanged = false;
@@ -154,6 +179,21 @@ native.__dispatch = (state, events) => {
 };
 
 export const strike = {
+  touchBlocked: () => touchBlocked,
+  blockTouch: (blocked: boolean) => {
+    touchBlocked = blocked;
+    if (blocked) native.touchInput?.(0, 0, 0);
+  },
+  radar: () => radar,
+  onRadar(fn: (state: RadarState | undefined) => void): () => void {
+    radarHandlers.add(fn);
+    return () => { radarHandlers.delete(fn); };
+  },
+  onMapError(fn: (message: string) => void): () => void {
+    mapErrorHandlers.add(fn);
+    return () => { mapErrorHandlers.delete(fn); };
+  },
+  touchInput: (buttons: number, lookX = 0, lookY = 0) => native.touchInput?.(buttons, lookX, lookY),
   /** The last state snapshot the host published (this tick). */
   state: (): StrikeState => current,
 
