@@ -3,7 +3,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;
 
-const MAP_COUNT: usize = 8;
+const MAP_COUNT: usize = 9;
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");

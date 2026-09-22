@@ -13,9 +13,17 @@ import { encodePNG } from "../vendor/pocketjs/tests/png.ts";
 import { build, MAP_NAMES } from "./3ds.ts";
 const root = resolve(import.meta.dir, "..");
 const scenario = process.env.E2E_3DS_SCENARIO ?? "combat";
-if (!["combat", "menu", "missing-map", "retry", "map"].includes(scenario))
+if (!["combat", "menu", "missing-map", "retry", "map", "mods"].includes(scenario))
   throw new Error(`Unknown scenario ${scenario}`);
-const selectDust = "0:0,10:0x40,12:0,14:0x40,16:0,20:0x2000,22:0";
+const modIndex = Number(process.env.E2E_3DS_MOD_INDEX ?? 0);
+const modPaths: string[] = JSON.parse(process.env.OPENSTRIKE_MOD_PACKS ?? "[]");
+if (!Number.isInteger(modIndex) || modIndex < 0 || modIndex > modPaths.length) throw new Error("Invalid mod index");
+const setup = ["0:0", "4:0x2000", "6:0"];
+if (modPaths.length) {
+  for (let i=0; i<modIndex; i++) setup.push(`${10+i*4}:0x40`,`${12+i*4}:0`);
+  setup.push("26:0x2000","28:0");
+}
+const selectDust = setup.join(",") + ",40:0x40,42:0,44:0x40,46:0,50:0x2000,52:0";
 if (scenario !== "combat") {
   process.env.POCKETJS_CAP_START =
     scenario === "menu" ? "410" : scenario === "retry" ? "550" : "100";
@@ -33,19 +41,32 @@ const mapName = process.env.E2E_3DS_MAP ?? "de_dust2";
 const mapIndex = MAP_NAMES.findIndex((name) => name === mapName);
 if (mapIndex < 0) throw new Error(`Unknown map ${mapName}`);
 if (scenario === "map") {
-  const tape = ["0:0"];
+  const tape = [...setup];
   for (let row = 0; row < Math.floor(mapIndex / 2); row++)
-    tape.push(`${10 + row * 4}:0x40`, `${12 + row * 4}:0`);
-  if (mapIndex % 2) tape.push("26:0x20", "28:0");
-  tape.push("40:0x2000", "42:0");
+    tape.push(`${40 + row * 4}:0x40`, `${42 + row * 4}:0`);
+  if (mapIndex % 2) tape.push("60:0x20", "62:0");
+  tape.push("70:0x2000", "72:0");
   process.env.POCKETJS_CAPTURE_INPUT = tape.join(",");
   process.env.POCKETJS_CAP_START = "550";
+}
+if (scenario === "mods") {
+  if (modPaths.length < 2 || modIndex !== 1) throw new Error("Mod switch test needs two packs and E2E_3DS_MOD_INDEX=1");
+  const tape = selectDust.split(",");
+  const press = (f:number,b:number) => tape.push(`${f}:${b}`,`${f+2}:0`);
+  const leave = (f:number) => { press(f,1);press(f+6,0x20);press(f+10,0x2000); };
+  leave(240);press(260,0x2000);press(270,0x2000);
+  press(300,0x40);press(304,0x40);press(308,0x2000);
+  leave(430);press(460,0x2000);press(480,0x40);press(484,0x40);press(488,0x2000);
+  press(500,0x40);press(504,0x40);press(508,0x2000);press(650,0x200);
+  process.env.POCKETJS_CAPTURE_INPUT=tape.join(",");
+  process.env.POCKETJS_CAPTURE_TOUCH="";
+  process.env.POCKETJS_CAP_START="760";process.env.POCKETJS_CAP_N="2";
 }
 if (!process.env.E2E_3DS_PREBUILT) {
   process.env.POCKETJS_CAP_START ??= "610";
   process.env.POCKETJS_CAP_N ??= "2";
   process.env.POCKETJS_CAPTURE_INPUT ??=
-    "0:0,10:0x40,12:0,14:0x40,16:0,20:0x2000,22:0,280:0x2000,290:0";
+    selectDust + ",280:0x2000,290:0";
   process.env.POCKETJS_CAPTURE_TOUCH ??=
     "300:0,250,50@320:-@340:0,250,90@342:-@500:0,100,100@502:0,110,100@504:0,120,100@506:0,130,100@508:-@520:0,100,100@522:-@540:0,30,212@542:-@560:0,250,130@562:-@580:0,250,170@585:-";
   await build(["--capture"]);
@@ -162,7 +183,7 @@ try {
     .trim()
     .split("\n")
     .map((line) => line.split("\t").map(Number));
-  if (!scene.every((row) => row.length === 15 && row.every(Number.isFinite)))
+  if (!scene.every((row) => row.length === 18 && row.every(Number.isFinite)))
     throw new Error("Invalid native telemetry");
   const last = scene.at(-1)!;
   if (scenario === "menu" || scenario === "missing-map") {
@@ -188,11 +209,15 @@ try {
   )
     throw new Error(`Unexpected loaded map index ${last[14]}`);
   if (scenario === "combat" && !process.env.E2E_3DS_CUSTOM_TAPE) {
+    const metadata = JSON.parse(readFileSync(modIndex ? modPaths[modIndex-1]! : resolve(root,"mods/classic.json"),"utf8"));
+    const mag = metadata.weapon.magSize, reserve = metadata.weapon.reserve;
+    if (last[15] !== modIndex) throw new Error("Selected mod did not load");
+    if (metadata.projectile && !scene.some(row=>row[16]!>0)) throw new Error("Projectile was never simulated");
     const ready = scene.find((row) => row[7] === row[8] && row[1] === 1)!;
     if (
-      !scene.some((row) => row[12]! < 30) ||
-      last[12] !== 30 ||
-      last[13]! >= 90
+      !scene.some((row) => row[12]! < mag) ||
+      last[12] !== mag ||
+      last[13]! >= reserve
     )
       throw new Error("Fire/reload did not complete");
     const at = (frame: number) => scene.find((row) => row[0] === frame)!;
@@ -204,6 +229,12 @@ try {
       throw new Error("Touch jump did not lift the player");
     if (at(335)[12] !== at(325)[12])
       throw new Error("Touch fire remained held after release");
+  }
+  if (scenario === "mods") {
+    const episodes:number[]=[];
+    for (const row of scene) if (row[1] === 1 && episodes.at(-1) !== row[15]) episodes.push(row[15]!);
+    if (episodes.join(",") !== "1,0,2" || last[15] !== 2 || !scene.some(row=>row[16]!>0))
+      throw new Error(`Mod resources did not switch cleanly: ${episodes}`);
   }
   writeFileSync(
     resolve(fixture, "receipt.json"),

@@ -123,12 +123,15 @@ is build-time consistency data, not a runtime trust mechanism.
 
 ## Nintendo 3DS
 
-The top screen renders the textured BSP world, police opponents, rifle and
+The top screen renders the textured BSP world, selected characters, weapons and
 shared game HUD through citro3d. The lower screen uses PocketJS's optional
 `display.auxiliary` and `input.touch.auxiliary` capabilities for a floor-aware
 map, player heading, opponents (amber when on a different level), 1×/2×/4×
-zoom, and a local waypoint. The 3DS package contains the classic loadout;
-custom character/projectile packs are not exposed by this renderer.
+zoom, and a local waypoint. Local mod packs use the same catalogue as PSP,
+including textured character animation, staff beams and thrown Poke Balls.
+The game uses the shared 60 Hz clock independently of presentation, retains
+PVS draw groups, blends character poses on PICA, and updates floor slices
+in bounded batches.
 
 | Control | Action |
 | --- | --- |
@@ -152,11 +155,13 @@ Initialize the submodules with `git submodule update --init` and run `bun run
 setup`. Install the Rust toolchain pinned by
 `vendor/pocketjs/hosts/3ds/core/rust-toolchain.toml` with `rust-src`, start
 Docker, and pull the digest-pinned devkitARM image listed in
-`vendor/pocketjs/tools/3ds-toolchain.ts`. Supply all eight locally cooked
-`*.p3d` maps (see Map data below):
+`vendor/pocketjs/tools/3ds-toolchain.ts`. Supply the eight classic cooked maps and `wwdc24-parkour.p3d` (see Map data
+below and the WWDC generator):
 
 ```sh
 OPENSTRIKE_COOKED_MAPS=/path/to/cooked/maps bun run build:3ds
+# Optional locally authored/baked packs, as on PSP:
+bun run build:3ds --mod out/mods/frieren/mod.json --mod out/mods/pikachu/mod.json
 bun run test:3ds
 OPENSTRIKE_COOKED_MAPS=/path/to/cooked/maps bun run test:e2e:3ds
 ```
@@ -164,7 +169,7 @@ OPENSTRIKE_COOKED_MAPS=/path/to/cooked/maps bun run test:e2e:3ds
 Copy the contents of `dist/3ds/sd/` to the SD card root. The entry is
 `/3ds/OpenStrike/OpenStrike.3dsx`, with maps beside it in `maps/`. The build
 validates each cooked map and records every staged file's SHA-256 in
-`dist/3ds/build.json`. For ftpd, use the address shown on the console:
+`dist/3ds/build.json`, and creates `dist/3ds/OpenStrike-3DS-SD.zip`. For ftpd, use the address shown on the console:
 
 ```sh
 bun run deploy:3ds --host <3ds-ip> --port 5000
@@ -186,7 +191,12 @@ Set `E2E_3DS_SCENARIO=menu`, `missing-map`, or `retry` to exercise returning
 from a loaded world, a missing SD map, or selecting an available map after
 that failure. Missing-map cases remove only the isolated test SD's copy.
 `E2E_3DS_SCENARIO=map E2E_3DS_MAP=de_nuke` checks a named map's native
-identity, texture loading and both framebuffers.
+identity, texture loading and both framebuffers. Set `OPENSTRIKE_MOD_PACKS`
+to a JSON array of local manifest paths and `E2E_3DS_MOD_INDEX` to select a
+pack. The `mods` scenario with index 1 and two packs checks Frieren → Classic
+→ Pikachu, including projectile simulation. The developer RPC can query
+`strike.__perf()` for the last 360 frame intervals, percentiles and draw counts;
+capture builds use virtual time and cannot establish hardware FPS.
 
 The build uses the pinned PocketJS host and UI core. `host.patch` applies
 native lifecycle/render hooks to an ignored copy under `.pocket/3ds-dev/`,

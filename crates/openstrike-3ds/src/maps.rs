@@ -130,7 +130,7 @@ mod tests {
 
     #[test]
     fn generated_catalogue_is_sorted_safe_and_nul_terminated() {
-        assert_eq!(MAP_CATALOG.len(), 8);
+        assert_eq!(MAP_CATALOG.len(), 9);
         assert!(MAP_CATALOG
             .windows(2)
             .all(|pair| pair[0].name < pair[1].name));

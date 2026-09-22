@@ -40,6 +40,7 @@ export const MAP_NAMES = [
   "de_inferno",
   "de_nuke",
   "de_train",
+  "wwdc24-parkour",
 ] as const;
 type Manifest = { app: Record<string, unknown>; [key: string]: unknown };
 
@@ -55,8 +56,12 @@ export async function render3dsIcons() {
 }
 
 export function threeDsManifest(source: Manifest) {
+  const engine = source.engine as { capabilities: { requires: string[]; enhances: string[] } };
   return {
     ...source,
+    engine: { ...engine, capabilities: { ...engine.capabilities,
+      enhances: engine.capabilities.enhances.filter((name) => name !== "io.offload"),
+    } },
     app: {
       ...source.app,
       entry: ".pocket/3ds-dev/openstrike.tsx",
@@ -90,9 +95,19 @@ export async function prepareHost() {
 
 export async function build(argv = process.argv.slice(2)) {
   await $`bun scripts/ensure-pocketjs-generated.ts`.cwd(root);
-  for (const flag of argv)
-    if (!["--capture", "--pocket-only"].includes(flag))
-      throw new Error(`Unknown 3DS option: ${flag}`);
+  const configured: unknown = JSON.parse(process.env.OPENSTRIKE_MOD_PACKS ?? "[]");
+  if (!Array.isArray(configured) || configured.some((path) => typeof path !== "string" || !path))
+    throw new Error("OPENSTRIKE_MOD_PACKS must be a JSON array of manifest paths");
+  const modPaths: string[] = configured.map((path) => resolve(root,path));
+  for (let i=0; i<argv.length; i++) {
+    const flag = argv[i]!;
+    if (flag === "--mod") {
+      const path = argv[++i];
+      if (!path || path.startsWith("--")) throw new Error("--mod needs a manifest path");
+      modPaths.push(resolve(root,path));
+    } else if (!["--capture", "--pocket-only"].includes(flag)) throw new Error(`Unknown 3DS option: ${flag}`);
+  }
+  if (modPaths.length > 7 || modPaths.some((path) => !existsSync(path))) throw new Error("Supply up to seven existing mod manifests");
   if (argv.includes("--capture") && argv.includes("--pocket-only"))
     throw new Error("Choose a capture or a guest-only build");
   const capture = argv.includes("--capture");
@@ -143,7 +158,7 @@ export async function build(argv = process.argv.slice(2)) {
     "utf8",
   ).match(/channel\s*=\s*"([^"]+)"/)?.[1];
   if (!toolchain) throw new Error("Missing PocketJS 3DS Rust toolchain pin");
-  // Only the classic pack is exposed until this renderer supports all mod meshes.
+  // Optional local packs use the same validated catalogue as PSP.
   await $`rustup run ${toolchain} cargo build --release --locked --manifest-path ${crate}/Cargo.toml --target armv6k-nintendo-3ds -Zbuild-std=core,alloc,compiler_builtins -Zbuild-std-features=compiler-builtins-mem --features embedded-map-catalog`
     .cwd(root)
     .env({
@@ -152,7 +167,7 @@ export async function build(argv = process.argv.slice(2)) {
         outputDirectory: guest,
         embedApp: true,
       }),
-      OPENSTRIKE_MOD_PACKS: "[]",
+      OPENSTRIKE_MOD_PACKS: JSON.stringify(modPaths),
       OPENSTRIKE_INITIAL_MOD: "classic",
       OPENSTRIKE_CHARACTER_ASSET: "",
       OPENSTRIKE_3DS_MAPS: MAP_NAMES.join(","),
@@ -211,6 +226,7 @@ export async function build(argv = process.argv.slice(2)) {
   if (!existsSync(output)) throw new Error("Missing 3DSX output");
   if (capture) return;
   const stage = resolve(out, "sd/3ds/OpenStrike");
+  rmSync(stage, { recursive: true, force: true });
   mkdirSync(resolve(stage, "maps"), { recursive: true });
   copyFileSync(output, resolve(stage, "OpenStrike.3dsx"));
   for (const name of MAP_NAMES)
@@ -238,12 +254,16 @@ export async function build(argv = process.argv.slice(2)) {
         app: plan.app.id,
         pocketjs,
         hostAbi: plan.target.hostAbi,
+        mods: ["classic",...modPaths.map((path)=>JSON.parse(readFileSync(path,"utf8")).id)],
         files,
       },
       null,
       2,
     ) + "\n",
   );
+  const archive = resolve(out,"OpenStrike-3DS-SD.zip");
+  rmSync(archive,{force:true});
+  await $`zip -q -r ${archive} 3ds`.cwd(resolve(out,"sd"));
   console.log(`OpenStrike 3DS SD package: ${stage}`);
 }
 if (import.meta.main) await build();

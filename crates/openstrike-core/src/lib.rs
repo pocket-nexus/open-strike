@@ -83,3 +83,5 @@ pub(crate) fn cosf(x: f32) -> f32 {
 
 #[cfg(test)]
 mod net_tests;
+
+pub mod effect_geometry;

@@ -4,8 +4,10 @@
 extern crate alloc;
 
 mod input;
+mod perf;
 mod radar;
 mod touch;
+mod world;
 
 #[cfg(target_os = "horizon")]
 pub mod host {
@@ -16,8 +18,6 @@ pub mod host {
 
 #[cfg(target_os = "horizon")]
 extern crate self as libquickjs_sys;
-#[cfg(target_os = "horizon")]
-extern crate self as pocketjs_psp;
 #[cfg(target_os = "horizon")]
 mod quickjs;
 #[cfg(target_os = "horizon")]

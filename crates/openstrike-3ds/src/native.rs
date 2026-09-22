@@ -3,14 +3,17 @@ use crate::{
     radar::Projection,
     *,
 };
+use crate::{perf::FrameTimes, world::WorldDraws};
 use alloc::{string::String, vec::Vec};
 use core::ffi::c_void;
 use glam::{Mat4, Vec3};
-use openstrike_core::{sim::Command, StrikeSim};
-use pocket3d_bsp::{
-    cooked::{self, CookedMap},
-    vis::VisSet,
+use openstrike_core::{
+    clock::{FixedClock, TICK_SECONDS},
+    effect_geometry::EffectGeometry,
+    sim::Command,
+    StrikeSim,
 };
+use pocket3d_bsp::cooked::{self, CookedMap};
 use pocket3d_gles2::Camera3d;
 
 #[used]
@@ -18,6 +21,7 @@ static UI_LINK: extern "C" fn(u32) = pocketjs_3ds_core::ui_init;
 
 extern "C" {
     fn osgpu_init() -> i32;
+    fn osgpu_stats(out: *mut f32);
     fn osgpu_shutdown();
     fn osgpu_world(
         verts: *const u8,
@@ -28,7 +32,7 @@ extern "C" {
     ) -> i32;
     fn osgpu_clear_world();
     fn osgpu_texture(index: u32, rgba: *const u8, width: u32, height: u32) -> i32;
-    fn osgpu_begin(view: *const f32);
+    fn osgpu_begin(view: *const f32, sky: *const f32);
     fn osgpu_world_begin();
     fn osgpu_run(texture: u32, base: u32, first: u32, count: u32, masked: i32, blended: i32)
         -> i32;
@@ -50,12 +54,16 @@ extern "C" {
 struct Game {
     sim: StrikeSim,
     map: CookedMap<'static>,
-    vis: VisSet,
-    runs: Vec<Vec<(u32, u32)>>,
+    draws: WorldDraws,
+    character: openstrike_character::Asset,
+    mod_index: usize,
+    projectile: Vec<present_data::ColorVertex>,
     next_texture: usize,
     projection: Projection,
     radar_texture: i32,
     radar_floor: f32,
+    radar_job: Option<radar::RasterJob>,
+    floors: radar::FloorMesh,
 }
 struct State {
     context: *mut JSContext,
@@ -68,19 +76,28 @@ struct State {
     frame: u32,
     time: f64,
     rifle: Vec<present_data::ColorVertex>,
-    officer: present_data::OfficerGeometry,
-    effects: present_data::EffectGeometry,
+    effects: EffectGeometry<present_data::ColorVertex>,
+    clock: FixedClock,
+    alpha: f32,
+    now: u64,
+    reload_pending: bool,
 }
 static mut STATE: Option<State> = None;
 // Separate intent storage: QuickJS callbacks may run while State is borrowed.
 static mut TOUCH_INPUT: touch::TouchInput = touch::TouchInput::new();
+// Keep diagnostics outside State for the same reentrant QuickJS boundary.
+static mut FRAME_TIMES: FrameTimes = FrameTimes::new();
+static mut WORLD_COUNTS: [u32; 2] = [0; 2];
 
 unsafe fn drain(s: &mut State) {
     strike::drain(|cmd| {
         if let Some(g) = &mut s.game {
             g.sim.apply(cmd, 0);
+            for bot in &mut g.sim.bots {
+                bot.muzzle_local = g.character.attack_origin();
+            }
         } else {
-            s.config.push(cmd);
+            openstrike_core::sim::retain_configuration(&mut s.config, cmd);
         }
     });
     strike::drain_host(|cmd| s.pending = Some(cmd));
@@ -168,28 +185,37 @@ unsafe fn radar_snapshot(s: &State) -> bool {
     call(s, b"__radar\0", snapshot)
 }
 unsafe fn load(s: &mut State, index: usize, mod_index: usize) -> Result<(), &'static str> {
-    if mod_index != 0 {
-        return Err("This 3DS build supports the classic loadout");
-    }
+    let pack = openstrike_mods::get(mod_index).ok_or("Unknown loadout")?;
     let entry = MAP_CATALOG.get(index).ok_or("Unknown map")?;
     release_game(s);
     let bytes = s.buffer.load(entry)?;
     let bytes = core::slice::from_raw_parts(bytes.as_ptr(), bytes.len());
     let map = cooked::read(bytes)?;
-    let sim = sim_boot::from_map(&map, &s.config)?;
+    let mut sim = sim_boot::from_map(&map, &s.config)?;
+    pack.configure(&mut sim);
+    let draws = WorldDraws::new(&map);
+    let indices = draws.indices(&map);
     if osgpu_world(
         map.verts.as_ptr(),
         map.vert_count,
-        map.indices.as_ptr(),
-        map.indices.len() as u32,
+        indices.as_ptr(),
+        indices.len() as u32,
         map.textures.len() as u32,
     ) == 0
     {
         osgpu_clear_world();
         return Err("Map exceeds available GPU memory");
     }
+    let character = pack.character();
+    for bot in &mut sim.bots {
+        bot.muzzle_local = character.attack_origin();
+    }
+    load_character(character)?;
     let floor = sim.player.state.pos.y;
-    let (projection, pixels) = radar::raster(&map, floor);
+    let floors = radar::FloorMesh::new(&map);
+    let mut radar = radar::RasterJob::new(&floors, floor);
+    radar.advance(&floors, usize::MAX);
+    let (projection, pixels) = (radar.projection, radar.pixels());
     let pixels = radar::texture_pixels(&pixels);
     let texture = pocketjs_3ds_core::ui_upload_texture(
         pixels.as_ptr(),
@@ -202,19 +228,31 @@ unsafe fn load(s: &mut State, index: usize, mod_index: usize) -> Result<(), &'st
         osgpu_clear_world();
         return Err("Minimap texture allocation failed");
     }
-    let mut runs = Vec::new();
-    runs.resize_with(map.batches.len(), Vec::new);
+    s.rifle = pack
+        .viewmodel()
+        .map(mesh_vertices)
+        .unwrap_or_else(present_data::build_rifle);
     s.game = Some(Game {
-        vis: VisSet::new(map.faces.len()),
+        draws,
+        character,
+        mod_index,
+        projectile: pack
+            .projectile_mesh()
+            .map(mesh_vertices)
+            .unwrap_or_default(),
         sim,
         map,
-        runs,
         next_texture: 0,
         projection,
         radar_texture: texture,
         radar_floor: floor,
+        radar_job: None,
+        floors,
     });
     s.input = input::PadInput::new();
+    s.reload_pending = false;
+    s.clock.reset(s.now);
+    FRAME_TIMES = FrameTimes::new();
     Ok(())
 }
 unsafe extern "C" fn js_touch(
@@ -245,9 +283,23 @@ pub unsafe extern "C" fn os3ds_boot(ctx: *mut c_void) -> i32 {
     strike::drain(drop);
     strike::drain_host(drop);
     let names: Vec<String> = MAP_CATALOG.iter().map(|m| String::from(m.name)).collect();
-    strike::register(ctx, global, &names);
+    if !strike::register(
+        ctx,
+        global,
+        &names,
+        strike::HostConfig {
+            mods: openstrike_mods::METADATA,
+            initial_mod: openstrike_mods::INITIAL,
+            network_supported: false,
+        },
+    ) {
+        JS_FreeValue(ctx, global);
+        osgpu_shutdown();
+        return 0;
+    }
     let surface = JS_GetPropertyStr(ctx, global, b"strike\0".as_ptr().cast());
     ffi::add_fn(ctx, surface, b"touchInput\0", js_touch, 3);
+    ffi::add_fn(ctx, surface, b"__perf\0", js_perf, 0);
     JS_FreeValue(ctx, surface);
     STATE = Some(State {
         context: ctx,
@@ -260,28 +312,51 @@ pub unsafe extern "C" fn os3ds_boot(ctx: *mut c_void) -> i32 {
         frame: 0,
         time: 0.,
         rifle: present_data::build_rifle(),
-        officer: present_data::OfficerGeometry::new(),
-        effects: present_data::EffectGeometry::default(),
+        effects: EffectGeometry::default(),
+        clock: FixedClock::new(0),
+        alpha: 1.,
+        now: 0,
+        reload_pending: false,
     });
+    FRAME_TIMES = FrameTimes::new();
+    WORLD_COUNTS = [0; 2];
     1
 }
 #[no_mangle]
-pub unsafe extern "C" fn os3ds_tick(buttons: u32, left: u32, right: u32) -> i32 {
+pub unsafe extern "C" fn os3ds_tick(buttons: u32, left: u32, right: u32, now: u64) -> i32 {
     let Some(s) = STATE.as_mut() else {
         return 0;
     };
     s.frame += 1;
-    s.time += 1. / 60.;
-    let mut tick = input::map(&mut s.input, buttons, left, right, 1. / 60.);
-    TOUCH_INPUT.apply(&mut tick);
+    s.now = now;
+    let due = s.clock.advance(now);
+    s.alpha = s.clock.alpha();
+    let sample = input::map(&mut s.input, buttons, left, right, TICK_SECONDS);
+    s.reload_pending |= sample.sim.reload;
     let ok = if let Some(g) = &mut s.game {
-        // Load textures incrementally before advancing the round freeze clock.
         if g.next_texture == g.map.textures.len() {
-            g.sim.apply_look(tick.look_dx, tick.look_dy);
-            g.sim.tick(&g.map.collision, 1. / 60., &tick.sim);
+            FRAME_TIMES.record(now);
+            for _ in 0..due {
+                let mut tick = input::TickInput {
+                    sim: sample.sim,
+                    look_dx: sample.look_dx,
+                    look_dy: sample.look_dy,
+                    ui_buttons: buttons,
+                };
+                tick.sim.reload = core::mem::take(&mut s.reload_pending);
+                TOUCH_INPUT.apply(&mut tick);
+                g.sim.apply_look(tick.look_dx, tick.look_dy);
+                g.sim.tick(&g.map.collision, TICK_SECONDS, &tick.sim);
+            }
+        } else {
+            s.clock.reset(now);
+            FRAME_TIMES.pause();
         }
         strike::dispatch(s.context, s.global, &mut g.sim)
     } else {
+        s.time += due as f64 * TICK_SECONDS as f64;
+        FRAME_TIMES.pause();
+        s.reload_pending = false;
         strike::dispatch_menu(s.context, s.global, s.time)
     };
     drain(s);
@@ -293,6 +368,7 @@ pub unsafe extern "C" fn os3ds_tick(buttons: u32, left: u32, right: u32) -> i32 
     }
     1
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn os3ds_after() -> i32 {
     if let Some(s) = STATE.as_mut() {
@@ -313,7 +389,7 @@ pub unsafe extern "C" fn os3ds_prepare() -> i32 {
                 release_game(s);
                 s.time = 0.;
             }
-            strike::HostCmd::LoadMap { map, mod_index } => {
+            strike::HostCmd::LoadMap { map, mod_index, .. } => {
                 if let Err(error) = load(s, map, mod_index) {
                     return map_error(s, error) as i32;
                 }
@@ -335,21 +411,29 @@ pub unsafe extern "C" fn os3ds_prepare() -> i32 {
         }
         g.next_texture += 1;
     }
-    if (g.sim.player.state.pos.y - g.radar_floor).abs() > 96. {
-        let (projection, pixels) = radar::raster(&g.map, g.sim.player.state.pos.y);
-        let pixels = radar::texture_pixels(&pixels);
-        let texture = pocketjs_3ds_core::ui_upload_texture(
-            pixels.as_ptr(),
-            pixels.len(),
-            radar::TEXTURE_WIDTH as u32,
-            radar::TEXTURE_HEIGHT as u32,
-            3,
-        );
-        if texture >= 0 {
-            pocketjs_3ds_core::ui_free_texture(g.radar_texture);
-            g.radar_texture = texture;
-            g.projection = projection;
-            g.radar_floor = g.sim.player.state.pos.y;
+    if g.radar_job.is_none()
+        && g.sim.player.state.on_ground
+        && (g.sim.player.state.pos.y - g.radar_floor).abs() > 96.
+    {
+        g.radar_job = Some(radar::RasterJob::new(&g.floors, g.sim.player.state.pos.y));
+    }
+    if let Some(job) = &mut g.radar_job {
+        if job.advance(&g.floors, 128) {
+            let pixels = radar::texture_pixels(&job.pixels());
+            let texture = pocketjs_3ds_core::ui_upload_texture(
+                pixels.as_ptr(),
+                pixels.len(),
+                radar::TEXTURE_WIDTH as u32,
+                radar::TEXTURE_HEIGHT as u32,
+                3,
+            );
+            if texture >= 0 {
+                pocketjs_3ds_core::ui_free_texture(g.radar_texture);
+                g.radar_texture = texture;
+                g.projection = job.projection;
+                g.radar_floor = job.floor;
+            }
+            g.radar_job = None;
             return radar_snapshot(s) as i32;
         }
     }
@@ -367,97 +451,97 @@ pub unsafe extern "C" fn os3ds_render(surface: u32) -> i32 {
         return 1;
     };
     let camera = Camera3d {
-        pos: g.sim.player.eye_interpolated(1.),
+        pos: g.sim.player.eye_interpolated(s.alpha),
         yaw: g.sim.player.yaw,
         pitch: g.sim.player.pitch,
         fov_y: 74f32.to_radians(),
         aspect: 400. / 240.,
         ..Camera3d::default()
     };
-    osgpu_begin(camera.view().to_cols_array().as_ptr());
-    osgpu_world_begin();
-    g.vis
-        .update(&g.map.vis, g.map.collision.planes(), camera.pos);
-    for ranges in &mut g.runs {
-        ranges.clear();
-    }
-    g.vis.gather_faces(&g.map.vis, &camera.frustum(), |i| {
-        let r = &g.map.faces[i as usize];
-        if r.batch != 0xffff && r.index_count > 0 {
-            g.runs[r.batch as usize].push((r.index_base, r.index_count as u32));
-        }
+    let sky = g.map.sky.unwrap_or(pocket3d_bsp::types::SkyColors {
+        horizon: Vec3::new(0.93, 0.79, 0.62),
+        zenith: Vec3::new(0.34, 0.48, 0.66),
     });
-    for r in &g.map.always_runs {
-        if r.batch != 0xffff && r.index_count > 0 {
-            g.runs[r.batch as usize].push((r.index_base, r.index_count as u32));
-        }
-    }
-    for (i, ranges) in g.runs.iter_mut().enumerate() {
-        let b = &g.map.batches[i];
-        if b.texture as usize >= g.next_texture {
-            continue;
-        }
-        ranges.sort_unstable();
-        let mut first = 0;
-        let mut count = 0;
-        for &(start, n) in ranges.iter().chain(core::iter::once(&(u32::MAX, 0))) {
-            if count > 0 && first + count != start {
-                if osgpu_run(
-                    b.texture as u32,
-                    b.vert_base,
-                    first,
-                    count,
-                    g.map.textures[b.texture as usize].masked as i32,
-                    (b.kind == pocket3d_bsp::SurfaceKind::Water) as i32,
-                ) == 0
-                {
-                    return 0;
-                }
-                count = 0;
+    let color = |v: f32| {
+        sky.horizon.lerp(
+            sky.zenith,
+            libm::powf(
+                libm::sinf(camera.pitch + (v - 0.5) * camera.fov_y).max(0.),
+                0.65,
+            ),
+        )
+    };
+    let lower = color(0.);
+    let upper = color(1.);
+    osgpu_begin(
+        camera.view().to_cols_array().as_ptr(),
+        [lower.x, lower.y, lower.z, upper.x, upper.y, upper.z].as_ptr(),
+    );
+    osgpu_world_begin();
+    let frustum = camera.frustum();
+    WORLD_COUNTS = [0; 2];
+    if !g
+        .draws
+        .draw(&g.map, camera.pos, &frustum, |batch, first, count| {
+            let b = g.map.batches[batch as usize];
+            if b.texture as usize >= g.next_texture {
+                return true;
             }
-            if count == 0 {
-                first = start;
-            }
-            count += n;
-        }
+            WORLD_COUNTS[0] += 1;
+            WORLD_COUNTS[1] += count / 3;
+            osgpu_run(
+                b.texture as u32,
+                b.vert_base,
+                first,
+                count,
+                g.map.textures[b.texture as usize].masked as i32,
+                (b.kind == pocket3d_bsp::SurfaceKind::Water) as i32,
+            ) != 0
+        })
+    {
+        return 0;
     }
     for bot in &g.sim.bots {
         if !camera.frustum().intersects_aabb(
-            bot.state.pos - Vec3::splat(48.),
-            bot.state.pos + Vec3::splat(80.),
+            bot.state.pos - Vec3::new(128., 164., 128.),
+            bot.state.pos + Vec3::splat(128.),
         ) {
             continue;
         }
-        s.officer.pose(bot);
-        if osgpu_color(
-            s.officer.vertices.as_ptr(),
-            s.officer.vertices.len(),
-            bot.transform_scaled(1.).to_cols_array().as_ptr(),
-            0,
+        let (clip, time) = bot.animation_sample();
+        let (a, b, mix) = g.character.pose(clip, time).frame_pair();
+        if osgpu_character(
+            a as u32,
+            b as u32,
+            mix,
+            bot.transform_scaled(1. / 256.).to_cols_array().as_ptr(),
         ) == 0
         {
             return 0;
         }
     }
-    present_data::build_effects_into(&mut s.effects, &g.sim, camera.forward());
-    if osgpu_color(
-        s.effects.vertices.as_ptr(),
-        s.effects.vertices.len(),
-        Mat4::IDENTITY.to_cols_array().as_ptr(),
-        1,
-    ) == 0
-    {
+    s.effects
+        .prepare(&g.sim, camera.forward(), s.alpha, color_vertex);
+    if !draw_color(&s.effects.world, Mat4::IDENTITY, 1) {
         return 0;
     }
+    for shot in &g.sim.projectiles.list {
+        let model = Mat4::from_translation(shot.position)
+            * Mat4::from_rotation_x(shot.age * 10.)
+            * Mat4::from_rotation_y(shot.age * 3.)
+            * Mat4::from_scale(Vec3::splat(shot.config.radius));
+        if !draw_color(&g.projectile, model, 0) {
+            return 0;
+        }
+    }
     if g.sim.player.alive
-        && osgpu_color(
-            s.rifle.as_ptr(),
-            s.rifle.len(),
-            g.sim.viewmodel_transform_at(1.).to_cols_array().as_ptr(),
-            2,
-        ) == 0
+        && !(g.sim.presentation.motion == openstrike_core::presentation::ViewMotion::Throw
+            && g.sim.weapon.shot_age < 0.12)
     {
-        return 0;
+        let model = g.sim.viewmodel_transform_at(s.alpha);
+        if !draw_color(&s.rifle, model, 2) || !draw_color(&s.effects.viewmodel, model, 3) {
+            return 0;
+        }
     }
     1
 }
@@ -475,7 +559,7 @@ pub unsafe extern "C" fn os3ds_shutdown() {
 /// Capture diagnostics are sampled by the C host without entering QuickJS.
 #[no_mangle]
 pub unsafe extern "C" fn os3ds_stats(values: *mut f32) {
-    let out = core::slice::from_raw_parts_mut(values, 15);
+    let out = core::slice::from_raw_parts_mut(values, 18);
     out.fill(0.);
     if let Some(s) = STATE.as_ref() {
         out[0] = s.frame as f32;
@@ -493,6 +577,9 @@ pub unsafe extern "C" fn os3ds_stats(values: *mut f32) {
             out[11] = g.sim.player.pitch;
             out[12] = g.sim.weapon.ammo as f32;
             out[13] = g.sim.weapon.reserve as f32;
+            out[15] = g.mod_index as f32;
+            out[16] = g.sim.projectiles.list.len() as f32;
+            out[17] = g.sim.weapon.shot_age;
             out[14] = MAP_CATALOG
                 .iter()
                 .position(|entry| entry.name == g.map.name)
@@ -500,4 +587,127 @@ pub unsafe extern "C" fn os3ds_stats(values: *mut f32) {
                 .unwrap_or(-1.);
         }
     }
+}
+#[repr(C)]
+struct CharacterAttribute {
+    uv: [f32; 2],
+    color: u32,
+}
+extern "C" {
+    fn oschar_load(
+        attrs: *const CharacterAttribute,
+        samples: *const i16,
+        vertices: u32,
+        frames: u32,
+        indices: *const u16,
+        count: u32,
+        rgba: *const u8,
+        width: u32,
+    ) -> i32;
+    fn osgpu_character(a: u32, b: u32, mix: f32, model: *const f32) -> i32;
+}
+unsafe fn load_character(asset: openstrike_character::Asset) -> Result<(), &'static str> {
+    let n = asset.vertex_count();
+    let attrs: Vec<_> = (0..n)
+        .map(|i| {
+            let uv = if asset.textured() {
+                let v = asset.textured_vertex(0, i);
+                [v.u as f32 / 32768., v.v as f32 / 32768.]
+            } else {
+                [0., 0.]
+            };
+            CharacterAttribute {
+                uv,
+                color: asset.baked_vertex(0, i).color,
+            }
+        })
+        .collect();
+    let mut samples = Vec::with_capacity(n * asset.baked_frame_count() * 3);
+    for frame in 0..asset.baked_frame_count() {
+        for i in 0..n {
+            let v = asset.baked_vertex(frame, i);
+            samples.extend_from_slice(&[v.x, v.y, v.z]);
+        }
+    }
+    let indices: Vec<_> = (0..asset.index_count())
+        .map(|i| asset.index(i) as u16)
+        .collect();
+    let white = [255u8; 8 * 8 * 4];
+    let (width, texture) = asset.texture().unwrap_or((8, &white));
+    if oschar_load(
+        attrs.as_ptr(),
+        samples.as_ptr(),
+        n as u32,
+        asset.baked_frame_count() as u32,
+        indices.as_ptr(),
+        indices.len() as u32,
+        texture.as_ptr(),
+        width as u32,
+    ) == 0
+    {
+        return Err("Character exceeds available GPU memory");
+    }
+    Ok(())
+}
+fn mesh_vertices(mesh: openstrike_mods::ViewModel) -> Vec<present_data::ColorVertex> {
+    (0..mesh.len())
+        .map(|i| {
+            let (p, color) = mesh.vertex(i);
+            present_data::ColorVertex {
+                x: p.x,
+                y: p.y,
+                z: p.z,
+                color,
+            }
+        })
+        .collect()
+}
+fn color_vertex(p: Vec3, c: [f32; 4]) -> present_data::ColorVertex {
+    let b = c.map(|v| (v.clamp(0., 1.) * 255.) as u8);
+    present_data::ColorVertex {
+        x: p.x,
+        y: p.y,
+        z: p.z,
+        color: u32::from_le_bytes(b),
+    }
+}
+unsafe fn draw_color(vertices: &[present_data::ColorVertex], model: Mat4, mode: i32) -> bool {
+    osgpu_color(
+        vertices.as_ptr(),
+        vertices.len(),
+        model.to_cols_array().as_ptr(),
+        mode,
+    ) != 0
+}
+unsafe extern "C" fn js_perf(ctx: *mut JSContext, _: JSValue, _: i32, _: *mut JSValue) -> JSValue {
+    let obj = JS_NewObject(ctx);
+    for (key, value) in [
+        b"frames\0".as_slice(),
+        b"fps\0",
+        b"p95Ms\0",
+        b"p99Ms\0",
+        b"maxMs\0",
+        b"over20Ms\0",
+    ]
+    .into_iter()
+    .zip(FRAME_TIMES.summary())
+    {
+        number(ctx, obj, key, value);
+    }
+    let mut gpu = [0f32; 4];
+    osgpu_stats(gpu.as_mut_ptr());
+    for (key, value) in [
+        b"commandWords\0".as_slice(),
+        b"commandCapacity\0",
+        b"gpuDrawingMs\0",
+        b"gpuProcessingMs\0",
+    ]
+    .into_iter()
+    .zip(gpu)
+    {
+        number(ctx, obj, key, value as f64);
+    }
+    number(ctx, obj, b"worldDraws\0", WORLD_COUNTS[0] as f64);
+    number(ctx, obj, b"worldTriangles\0", WORLD_COUNTS[1] as f64);
+    obj
 }
