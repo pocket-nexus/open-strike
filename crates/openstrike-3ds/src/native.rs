@@ -3,7 +3,8 @@ use crate::{
     radar::Projection,
     *,
 };
-use crate::{perf::FrameTimes, world::WorldDraws};
+use crate::world::WorldDraws;
+use openstrike_core::frame_times::FrameTimes;
 use alloc::{string::String, vec::Vec};
 use core::ffi::c_void;
 use glam::{Mat4, Vec3};

@@ -51,4 +51,5 @@ jobs:
       - run: cargo test --locked -p openstrike-core -p openstrike-character -p openstrike-mods -p openstrike-companion
       - run: cargo check --locked -p openstrike-core --no-default-features --features libm
       - run: cargo check --locked --manifest-path crates/openstrike-symbian/Cargo.toml --lib
-      - run: bun test test/strike-sdk.test.ts
+      - run: cargo test --locked --manifest-path crates/openstrike-vita/Cargo.toml --lib
+      - run: bun test test/strike-sdk.test.ts test/openstrike-vita-artwork.test.ts

@@ -4,6 +4,7 @@
 //
 //   bun scripts/e2e-vita.ts            # compare checked-in goldens
 //   UPDATE=1 bun scripts/e2e-vita.ts   # intentionally re-baseline
+//   VITA_E2E_BACKEND=OpenGL bun scripts/e2e-vita.ts # macOS Vulkan fallback
 //
 // The current macOS Vita3K Vulkan backend does not expose a coherent guest
 // color buffer after presentation. PocketJS capture builds therefore raster
@@ -28,6 +29,10 @@ import {
 const repo = new URL("..", import.meta.url).pathname;
 const home = process.env.HOME ?? "";
 const update = process.env.UPDATE === "1";
+const backend = process.env.VITA_E2E_BACKEND ?? "Vulkan";
+if (backend !== "Vulkan" && backend !== "OpenGL") {
+  throw new Error(`unknown VITA_E2E_BACKEND=${backend}; use Vulkan or OpenGL`);
+}
 const goldens = `${repo}test/goldens-vita`;
 const outDir = `${repo}out/e2e-vita`;
 const profile = `${outDir}/vita3k`;
@@ -163,7 +168,7 @@ async function prepareProfile(vpk: string): Promise<void> {
     config = config.replace(line, `${key}: ${value}`);
   };
   set("initial-setup", "false");
-  set("backend-renderer", "Vulkan");
+  set("backend-renderer", backend);
   set("resolution-multiplier", "1");
   set("screen-filter", "Nearest");
   set("v-sync", "false");
@@ -226,6 +231,8 @@ async function launchAndWait(expectedFrames: number): Promise<string[]> {
         "--load-config",
         "--config-location",
         configFile,
+        "-B",
+        backend,
         "-r",
         titleId,
       ],
@@ -413,7 +420,7 @@ function assertLookProbe(
 let failures = 0;
 for (const spec of selectedSpecs) {
   console.log(`\n## ${spec.name} (input: ${spec.input})`);
-  await $`bun scripts/vita.ts --capture --release --map de_dust2`
+  await $`bun scripts/vita.ts --capture --no-usb-debug --release --map de_dust2 --out-dir ${outDir}/build`
     .cwd(repo)
     .env({
       ...process.env,
@@ -422,10 +429,10 @@ for (const spec of selectedSpecs) {
       OPENSTRIKE_VITA_CAP_N: String(spec.capN),
     });
 
-  const vpk = `${repo}dist/vita/OpenStrike.vpk`;
+  const vpk = `${outDir}/build/OpenStrike.vpk`;
   rmSync(capDir, { recursive: true, force: true });
   await prepareProfile(vpk);
-  console.log("# Vita3K ...");
+  console.log(`# Vita3K (${backend}) ...`);
 
   let raws: string[];
   try {
@@ -449,6 +456,7 @@ for (const spec of selectedSpecs) {
         shot,
         assertLiveScene(`${capDir}/${stem}.scene`, label, spec.name === "fire"),
       );
+      cpSync(`${capDir}/${stem}.scene`, `${outDir}/${label}.scene`);
 
       const png = `${outDir}/${label}.png`;
       await $`magick -size 960x544 -depth 8 RGBA:${rawPath} -alpha off -define png:exclude-chunks=date,time PNG24:${png}`.quiet();

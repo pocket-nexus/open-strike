@@ -85,3 +85,5 @@ pub(crate) fn cosf(x: f32) -> f32 {
 mod net_tests;
 
 pub mod effect_geometry;
+
+pub mod frame_times;

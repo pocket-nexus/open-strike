@@ -8,15 +8,19 @@
 //   OPENSTRIKE_MAPS=~/cs bun scripts/vita.ts
 
 import { $ } from "bun";
+import { createHash, randomBytes } from "node:crypto";
+import { resolve } from "node:path";
 import {
   cpSync,
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   rmSync,
 } from "node:fs";
 import { compilePocketTarget, nativePocketContract } from "./pocket-contract.ts";
 import { packageVitaVpk } from "../vendor/pocketjs/tools/vita-package.ts";
+import { prepareVitaUsb } from "../vendor/pocketjs/tools/vita-usb.ts";
 import { cookMap } from "./cook-map.ts";
 
 const repo = new URL("..", import.meta.url).pathname;
@@ -31,12 +35,27 @@ function value(name: string, fallback: string): string {
 
 const mapName = value("map", "de_dust2");
 const release = argv.includes("-r") || argv.includes("--release");
+const usbDebug = !argv.includes("--no-usb-debug");
+const outputDir = resolve(repo, value("out-dir", "dist/vita"));
+const configured: unknown = JSON.parse(process.env.OPENSTRIKE_MOD_PACKS ?? "[]");
+if (!Array.isArray(configured) || configured.some((p) => typeof p !== "string" || !p))
+  throw new Error("OPENSTRIKE_MOD_PACKS must be an array of manifest paths");
+const modPaths: string[] = configured.map((p) => resolve(repo, p));
+for (let i = 0; i < argv.length; i++) {
+  if (argv[i] !== "--mod") continue;
+  const path = argv[++i];
+  if (!path || path.startsWith("--")) throw new Error("--mod needs a manifest path");
+  modPaths.push(resolve(repo, path));
+}
+if (modPaths.length > 7 || modPaths.some((p) => !existsSync(p)))
+  throw new Error("Supply up to seven existing mod manifests");
 const features: string[] = [];
 if (argv.includes("--capture")) features.push("capture");
 if (argv.includes("--bench")) features.push("bench");
 
 const mapsRoot = process.env.OPENSTRIKE_MAPS ?? `${home}/Downloads/cs-maps-20260705-1836`;
-if (!existsSync(`${mapsRoot}/maps`)) {
+const cookedMaps = process.env.OPENSTRIKE_COOKED_MAPS;
+if (!cookedMaps && !existsSync(`${mapsRoot}/maps`)) {
   console.error(`no maps dir at ${mapsRoot}/maps (set OPENSTRIKE_MAPS)`);
   process.exit(1);
 }
@@ -55,13 +74,17 @@ if (!Bun.which("cargo-vita")) {
 // immutable resolved plan. The same source manifest is also valid on PSP.
 console.log("openstrike-vita: resolving and building the Pocket app contract");
 const pocketPlan = await compilePocketTarget("vita");
+const planPath = `${repo}.pocket/vita/plan.json`;
+const plan = JSON.parse(readFileSync(planPath, "utf8"));
+const nativeBuild = randomBytes(16).toString("hex");
+const usb = usbDebug ? await prepareVitaUsb() : undefined;
 
 // 2. Cook every map so the on-device menu owns the complete catalogue.
 mkdirSync(`${repo}dist/maps`, { recursive: true });
-const bsps = readdirSync(`${mapsRoot}/maps`)
+const bsps = cookedMaps ? [] : readdirSync(`${mapsRoot}/maps`)
   .filter((file) => file.endsWith(".bsp"))
   .sort();
-if (bsps.length === 0) {
+if (!cookedMaps && bsps.length === 0) {
   console.error(`no BSP maps found under ${mapsRoot}/maps`);
   process.exit(1);
 }
@@ -78,8 +101,12 @@ for (const file of bsps) {
 const stagedMaps = `${vitaDir}static/maps`;
 rmSync(stagedMaps, { recursive: true, force: true });
 mkdirSync(stagedMaps, { recursive: true });
-for (const file of readdirSync(`${repo}dist/maps`).filter((name) => name.endsWith(".p3d"))) {
-  cpSync(`${repo}dist/maps/${file}`, `${stagedMaps}/${file}`);
+const mapDirectory = resolve(cookedMaps ?? `${repo}dist/maps`);
+const cookedFiles = readdirSync(mapDirectory).filter((name) => name.endsWith(".p3d") && !name.startsWith("."));
+if (!cookedFiles.length) throw new Error(`No cooked maps in ${mapDirectory}`);
+for (const file of cookedFiles) {
+  await $`cargo run --release --locked -q -p pocket3d-cook -- --verify-cooked ${mapDirectory}/${file}`.cwd(`${repo}vendor/pocketjs/engine/pocket3d`);
+  cpSync(`${mapDirectory}/${file}`, `${stagedMaps}/${file}`);
 }
 
 // 3. Rust tier-3 target -> SELF -> VPK. Capture and bench builds autostart a
@@ -92,12 +119,20 @@ if (!existsSync(rustup)) {
   process.exit(1);
 }
 const toolchain = process.env.OPENSTRIKE_VITA_RUST_TOOLCHAIN ?? "nightly-2026-05-28";
-const cargoArgs: string[] = [];
+const cargoArgs: string[] = ["--locked"];
 if (release) cargoArgs.push("--release");
 if (features.length) cargoArgs.push(`--features=${features.join(",")}`);
+if (!usbDebug) cargoArgs.push("--no-default-features");
 const env = {
   ...process.env,
   ...nativePocketContract(pocketPlan),
+  POCKETJS_EMBED_APP: "1",
+  POCKETJS_VITA_TITLE_ID: "OPSK00001",
+  POCKETJS_VITA_PLAN: planPath,
+  POCKETJS_NATIVE_BUILD: nativeBuild,
+  OPENSTRIKE_MOD_PACKS: JSON.stringify(modPaths),
+  OPENSTRIKE_INITIAL_MOD: process.env.OPENSTRIKE_INITIAL_MOD ?? "classic",
+  OPENSTRIKE_CHARACTER_ASSET: "",
   VITASDK: vitaSdk,
   // Homebrew's cargo/rustc may precede rustup on macOS. cargo-vita needs the
   // nightly rustup proxy for every recursive cargo/rustc invocation.
@@ -126,6 +161,8 @@ if (![artifact, sfo, eboot].every(existsSync)) {
   console.error(`cargo-vita completed but package inputs are incomplete under ${targetDirectory}`);
   process.exit(1);
 }
+if (usbDebug)
+  await $`${vitaSdk}/bin/vita-make-fself ${targetDirectory}/openstrike-vita.velf ${eboot}`;
 
 await packageVitaVpk({
   tool: `${vitaSdk}/bin/vita-pack-vpk`,
@@ -133,9 +170,20 @@ await packageVitaVpk({
   eboot,
   output: artifact,
   applicationAssets: `${vitaDir}static`,
+  usbDriver: usb?.driver,
 });
 
-const packaged = `${repo}dist/vita/OpenStrike.vpk`;
-mkdirSync(`${repo}dist/vita`, { recursive: true });
+const packaged = `${outputDir}/OpenStrike.vpk`;
+mkdirSync(outputDir, { recursive: true });
 cpSync(artifact, packaged);
+cpSync(eboot, `${outputDir}/OpenStrike.self`);
+await Bun.write(`${outputDir}/OpenStrike.runtime.json`, JSON.stringify({
+  version: 1, titleId: "OPSK00001", applicationId: plan.app.id,
+  output: pocketPlan.appOutput, nativeBuild, plan,
+  self: "OpenStrike.self", usbDebug, usbDriver: usb?.fingerprint,
+  selfSha256: createHash("sha256").update(readFileSync(eboot)).digest("hex"),
+}, null, 2) + "\n");
+// PocketJS's installer addresses VPKs by the resolved output name.
+if (pocketPlan.appOutput !== "OpenStrike")
+  cpSync(artifact, `${outputDir}/${pocketPlan.appOutput}.vpk`);
 console.log(`output: ${packaged}`);
