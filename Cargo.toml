@@ -9,6 +9,7 @@ exclude = [
     "crates/openstrike-vita",
     "crates/openstrike-symbian",
     "crates/openstrike-3ds",
+    "crates/openstrike-ipod",
 ]
 
 [workspace.package]

@@ -9,6 +9,8 @@ crate-type = ["rlib", "staticlib"]
 
 [features]
 default = []
+# Type-check the native renderer and QuickJS adapter on CI without an iOS SDK.
+native-check = ["pocketjs-symbian-core/gles1"]
 native = ["pocketjs-symbian-core/bare-platform", "pocketjs-symbian-core/gles1"]
 
 [dependencies]

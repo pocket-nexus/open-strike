@@ -3,34 +3,34 @@
 extern crate alloc;
 pub mod input;
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", feature = "native-check"))]
 extern crate self as libquickjs_sys;
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", feature = "native-check"))]
 #[path = "../../openstrike-symbian/src/quickjs.rs"]
 mod quickjs;
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", feature = "native-check"))]
 pub use quickjs::*;
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", feature = "native-check"))]
 mod actors;
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", feature = "native-check"))]
 mod app;
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", feature = "native-check"))]
 mod gl;
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", feature = "native-check"))]
 #[allow(dead_code)]
 #[path = "../../openstrike-vita/src/present_data.rs"]
 mod present_data;
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", feature = "native-check"))]
 #[path = "../../openstrike-vita/src/sim_boot.rs"]
 mod sim_boot;
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", feature = "native-check"))]
 #[allow(dead_code, unexpected_cfgs)]
 #[path = "../../openstrike-psp/src/strike.rs"]
 mod strike;
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", feature = "native-check"))]
 mod world;
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", feature = "native-check"))]
 mod ffi {
     use super::*;
     pub unsafe fn arg_i32(c: *mut JSContext, argc: i32, argv: *mut JSValue, i: isize) -> i32 {
