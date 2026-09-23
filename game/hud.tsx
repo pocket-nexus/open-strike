@@ -14,6 +14,8 @@ import { onButtonPress, onFrame } from "@pocketjs/framework/lifecycle";
 import { hasFeature, platform } from "@pocketjs/framework/platform";
 import { strike, profileHud } from "./sdk.ts";
 import { ROUND_FREEZE, ROUND_END_PAUSE, phaseAge } from "./rules.ts";
+import { PRIMARY_TOUCH } from "./control-platform.ts";
+import TouchControls from "./touch-controls.tsx";
 
 // Palette (military night-ops): lime reticle, amber warnings, blood red.
 const INK = "#e8f0f2";
@@ -441,7 +443,7 @@ export default function Hud() {
         </View>
 
         {/* ---- bottom row ---- */}
-        <View class="flex-row justify-between items-end">
+        <View class={PRIMARY_TOUCH ? "absolute flex-row justify-between items-end" : "flex-row justify-between items-end"} style={PRIMARY_TOUCH ? { insetL: 12, insetR: 12, insetT: 56 } : {}}>
           {/* Health: fixed number cell + paint-only bar fill */}
           <View class="flex-col gap-1">
             <View
@@ -573,6 +575,7 @@ export default function Hud() {
       </Show>
 
       {/* Quit dialog (SELECT). CS-style: the world keeps running behind it. */}
+      {PRIMARY_TOUCH && <View focusable class="absolute items-center justify-center rounded-sm" onPress={() => setDialog(true)} style={{ insetL: 12, insetT: 8, width: 70, height: 44, bgColor: "#05080c99", zIndex: 40 }}><Text class="text-xs font-bold" style={{ textColor: INK }}>PAUSE</Text></View>}
       <Show when={dialog()}>
         <QuitDialog
           onStay={() => setDialog(false)}
@@ -582,6 +585,7 @@ export default function Hud() {
           }}
         />
       </Show>
+      {PRIMARY_TOUCH && <Show when={!dialog()}><TouchControls /></Show>}
     </View>
   );
 }
@@ -614,6 +618,7 @@ function QuitDialog(props: { onStay: () => void; onQuit: () => void }) {
           <View
             focusable
             onPress={props.onStay}
+            style={PRIMARY_TOUCH ? { paddingT: 14, paddingB: 14, paddingL: 28, paddingR: 28 } : {}}
             class="px-4 py-1 rounded-sm border-[#00000000] transition-colors duration-100 bg-[#111a24] focus:bg-slate-600 focus:border-slate-300"
           >
             <Text class={label} style={{ textColor: INK }}>
@@ -623,6 +628,7 @@ function QuitDialog(props: { onStay: () => void; onQuit: () => void }) {
           <View
             focusable
             onPress={props.onQuit}
+            style={PRIMARY_TOUCH ? { paddingT: 14, paddingB: 14, paddingL: 28, paddingR: 28 } : {}}
             class="px-4 py-1 rounded-sm border-[#00000000] transition-colors duration-100 bg-[#241014] focus:bg-red-800 focus:border-red-400"
           >
             <Text class={label} style={{ textColor: RED }}>
@@ -634,7 +640,7 @@ function QuitDialog(props: { onStay: () => void; onQuit: () => void }) {
           when={IS_SYMBIAN_E7}
           fallback={
             <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
-              {hasFeature("display.auxiliary") ? "↔ SELECT · A CONFIRM · SELECT CLOSE" : "↔ SELECT · ○ CONFIRM · SELECT CLOSE"}
+              {PRIMARY_TOUCH ? "TAP STAY TO RESUME · TAP QUIT TO LEAVE" : hasFeature("display.auxiliary") ? "↔ SELECT · A CONFIRM · SELECT CLOSE" : "↔ SELECT · ○ CONFIRM · SELECT CLOSE"}
             </Text>
           }
         >

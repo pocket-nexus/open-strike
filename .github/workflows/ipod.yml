@@ -1,0 +1,25 @@
+name: iPod touch controls and contracts
+on:
+  pull_request:
+    paths: ["crates/openstrike-ipod/**", "crates/openstrike-core/**", "game/**", "scripts/ipod*.ts", "hosts/ipodtouch4/**", "test/primary-touch.test.ts", "test/strike-sdk.test.ts", "test/fixtures/ipod-contacts.c", "package.json", "vendor/pocketjs", ".github/workflows/ipod.yml"]
+  push:
+    branches: [main]
+    paths: ["crates/openstrike-ipod/**", "crates/openstrike-core/**", "game/**", "scripts/ipod*.ts", "hosts/ipodtouch4/**", "test/primary-touch.test.ts", "test/strike-sdk.test.ts", "test/fixtures/ipod-contacts.c", "package.json", "vendor/pocketjs", ".github/workflows/ipod.yml"]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  controls:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - run: git submodule update --init vendor/pocketjs
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/openstrike-ipod
+      - run: bun run setup
+      - run: bun run typecheck
+      - run: bun run test:ipod

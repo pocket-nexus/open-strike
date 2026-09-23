@@ -1,0 +1,31 @@
+[package]
+name = "openstrike-ipod"
+version = "0.3.4"
+edition = "2021"
+license = "MIT"
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[features]
+default = []
+native = ["pocketjs-symbian-core/bare-platform", "pocketjs-symbian-core/gles1"]
+
+[dependencies]
+openstrike-core = { path = "../openstrike-core", default-features = false, features = ["libm"] }
+openstrike-character = { path = "../openstrike-character" }
+openstrike-mods = { path = "../openstrike-mods" }
+pocket3d-bsp = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-bsp", default-features = false, features = ["libm"] }
+pocket3d-gles2 = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-gles2" }
+pocketjs-symbian-core = { package = "pocketjs-ui-cabi", path = "../../vendor/pocketjs/engine/ui-cabi", default-features = false }
+glam = { version = "0.33", default-features = false, features = ["libm", "scalar-math"] }
+libm = "0.2"
+
+[workspace]
+resolver = "2"
+
+[profile.release]
+panic = "abort"
+opt-level = 3
+codegen-units = 1
+lto = true
