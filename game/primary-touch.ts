@@ -81,6 +81,12 @@ export function createPrimaryTouch(
   };
   return {
     cancel,
+    sync(held: readonly Contact[]) {
+      // A recognizer mounted mid-contact never observes that contact's UP.
+      // Retire its suppression from snapshots before the host reuses its ID.
+      for (const id of ignored)
+        if (!held.some((c) => c.id === id)) ignored.delete(id);
+    },
     down(c: Contact) {
       if (!callbacks.enabled() || contacts.has(c.id) || ignored.has(c.id))
         return;

@@ -10,6 +10,22 @@ pub struct TouchInput {
     jump: bool,
 }
 impl TouchInput {
+    pub const fn new() -> Self {
+        Self {
+            held: SimInput {
+                move_x: 0.,
+                move_y: 0.,
+                walk: false,
+                jump: false,
+                fire: false,
+                reload: false,
+            },
+            buttons: 0,
+            look: [0.; 2],
+            reload: false,
+            jump: false,
+        }
+    }
     pub fn update(&mut self, x: i32, y: i32, buttons: i32, dx: i32, dy: i32) {
         self.held.move_x = x.clamp(-1000, 1000) as f32 / 1000.;
         self.held.move_y = y.clamp(-1000, 1000) as f32 / 1000.;
@@ -35,6 +51,32 @@ impl TouchInput {
     }
     pub fn clear(&mut self) {
         *self = Self::default();
+    }
+}
+
+/// Guest callbacks own these intents independently of the borrowed game state.
+/// Access must end before entering QuickJS, including argument coercion.
+#[derive(Default)]
+pub struct GuestInput {
+    pub touch: TouchInput,
+    pub paused: bool,
+}
+impl GuestInput {
+    pub const fn new() -> Self {
+        Self {
+            touch: TouchInput::new(),
+            paused: false,
+        }
+    }
+    pub fn update(&mut self, values: [i32; 5]) {
+        if !self.paused {
+            self.touch
+                .update(values[0], values[1], values[2], values[3], values[4]);
+        }
+    }
+    pub fn set_paused(&mut self, paused: bool) {
+        self.paused = paused;
+        self.touch.clear();
     }
 }
 

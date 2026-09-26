@@ -1,10 +1,10 @@
 name: iPod touch controls and contracts
 on:
   pull_request:
-    paths: ["crates/openstrike-ipod/**", "crates/openstrike-core/**", "crates/openstrike-character/**", "crates/openstrike-mods/**", "crates/openstrike-vita/src/**", "crates/openstrike-psp/src/strike.rs", "crates/openstrike-symbian/src/quickjs.rs", "game/**", "scripts/ipod*.ts", "hosts/ipodtouch4/**", "test/primary-touch.test.ts", "test/strike-sdk.test.ts", "test/fixtures/ipod-contacts.c", "package.json", "pocket.json", "vendor/pocketjs", ".github/workflows/ipod.yml"]
+    paths: ["crates/openstrike-ipod/**", "crates/openstrike-core/**", "crates/openstrike-character/**", "crates/openstrike-mods/**", "crates/openstrike-vita/src/**", "crates/openstrike-psp/src/strike.rs", "crates/openstrike-symbian/src/quickjs.rs", "game/**", "scripts/ipod*.ts", "hosts/ipodtouch4/**", "test/primary-touch.test.ts", "test/primary-touch-gesture.test.ts", "test/strike-sdk.test.ts", "test/fixtures/ipod-contacts.c", "package.json", "pocket.json", "vendor/pocketjs", ".github/workflows/ipod.yml"]
   push:
     branches: [main]
-    paths: ["crates/openstrike-ipod/**", "crates/openstrike-core/**", "crates/openstrike-character/**", "crates/openstrike-mods/**", "crates/openstrike-vita/src/**", "crates/openstrike-psp/src/strike.rs", "crates/openstrike-symbian/src/quickjs.rs", "game/**", "scripts/ipod*.ts", "hosts/ipodtouch4/**", "test/primary-touch.test.ts", "test/strike-sdk.test.ts", "test/fixtures/ipod-contacts.c", "package.json", "pocket.json", "vendor/pocketjs", ".github/workflows/ipod.yml"]
+    paths: ["crates/openstrike-ipod/**", "crates/openstrike-core/**", "crates/openstrike-character/**", "crates/openstrike-mods/**", "crates/openstrike-vita/src/**", "crates/openstrike-psp/src/strike.rs", "crates/openstrike-symbian/src/quickjs.rs", "game/**", "scripts/ipod*.ts", "hosts/ipodtouch4/**", "test/primary-touch.test.ts", "test/primary-touch-gesture.test.ts", "test/strike-sdk.test.ts", "test/fixtures/ipod-contacts.c", "package.json", "pocket.json", "vendor/pocketjs", ".github/workflows/ipod.yml"]
   workflow_dispatch: {}
 permissions:
   contents: read
@@ -24,3 +24,16 @@ jobs:
       - run: bun run typecheck
       - run: bun run test:ipod
       - run: cargo check --locked --manifest-path crates/openstrike-ipod/Cargo.toml --features native-check
+  callback-borrows:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - run: git submodule update --init vendor/pocketjs
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/openstrike-ipod
+      - run: cargo miri test --locked --manifest-path crates/openstrike-ipod/Cargo.toml --features native-check guest_callbacks_are_independent

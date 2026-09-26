@@ -1,11 +1,10 @@
 import { For, onCleanup } from "solid-js";
 import { Text, View, type NodeMirror } from "@pocketjs/framework/components";
-import { createGesture } from "@pocketjs/framework/gesture";
 import * as hot from "@pocketjs/framework/hot";
-import { touches } from "@pocketjs/framework/touch";
 import { reportAppAction } from "@pocketjs/framework/host";
 import { strike } from "./sdk.ts";
-import { BUTTON, CONTROL, createPrimaryTouch } from "./primary-touch.ts";
+import { BUTTON, CONTROL } from "./primary-touch.ts";
+import { usePrimaryTouch } from "./primary-touch-gesture.ts";
 
 export default function TouchControls() {
   let stick: NodeMirror | undefined, nub: NodeMirror | undefined;
@@ -15,7 +14,7 @@ export default function TouchControls() {
     strike.state().phase === "live" &&
     strike.state().alive &&
     !strike.touchBlocked();
-  const touch = createPrimaryTouch(
+  const touch = usePrimaryTouch(
     {
       enabled,
       input: strike.primaryInput,
@@ -43,7 +42,6 @@ export default function TouchControls() {
         reportAppAction("openstrike_touch", ++completed);
       },
     },
-    touches().map((c) => c.id),
   );
   let active = false;
   onCleanup(
@@ -53,13 +51,6 @@ export default function TouchControls() {
       active = next;
     }),
   );
-  onCleanup(() => touch.cancel());
-  createGesture({
-    onDown: touch.down,
-    onMove: touch.move,
-    onUp: touch.up,
-    onCancel: (c) => touch.cancel(c.id),
-  });
   return (
     <View class="absolute inset-0" style={{ zIndex: 30 }}>
       <View

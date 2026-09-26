@@ -37,41 +37,30 @@ struct State {
     perf: FrameTimes,
     alpha: f32,
     time: f64,
-    touch: input::TouchInput,
-    paused: bool,
     frames: u32,
     gl_error: u32,
     error: &'static str,
 }
 static mut STATE: Option<State> = None;
+// QuickJS can call primary/pause during dispatch, menu mount and map errors.
+// These callbacks must never borrow STATE, which the native turn still owns.
+// All access is on the host's render thread; no INPUT borrow crosses JS calls.
+static mut INPUT: input::GuestInput = input::GuestInput::new();
 #[used]
 static CORE: extern "C" fn(u32) = pocketjs_symbian_core::ui_init;
 
 unsafe extern "C" fn primary(c: *mut JSContext, _: JSValue, n: i32, a: *mut JSValue) -> JSValue {
-    if let Some(s) = STATE.as_mut() {
-        if !s.paused {
-            s.touch.update(
-                ffi::arg_i32(c, n, a, 0),
-                ffi::arg_i32(c, n, a, 1),
-                ffi::arg_i32(c, n, a, 2),
-                ffi::arg_i32(c, n, a, 3),
-                ffi::arg_i32(c, n, a, 4),
-            );
-        }
-    }
+    // JS_ToInt32 may itself call JS (valueOf); coerce before borrowing INPUT.
+    let values = core::array::from_fn(|i| ffi::arg_i32(c, n, a, i as isize));
+    INPUT.update(values);
     JS_UNDEFINED
 }
 unsafe extern "C" fn pause(c: *mut JSContext, _: JSValue, n: i32, a: *mut JSValue) -> JSValue {
-    if let Some(s) = STATE.as_mut() {
-        s.paused = ffi::arg_i32(c, n, a, 0) != 0;
-        s.clear_input();
-    }
+    let paused = ffi::arg_i32(c, n, a, 0) != 0;
+    INPUT.set_paused(paused);
     JS_UNDEFINED
 }
 impl State {
-    fn clear_input(&mut self) {
-        self.touch.clear();
-    }
     unsafe fn load(&mut self, index: usize, pack: usize) -> Result<(), &'static str> {
         let name = MAP_NAMES.get(index).ok_or("Unknown map")?;
         let pack_data = openstrike_mods::get(pack).ok_or("Unknown loadout")?;
@@ -118,8 +107,7 @@ impl State {
         fclose(file);
         self.clock.reset(openstrike_now_us());
         self.perf = FrameTimes::new();
-        self.clear_input();
-        self.paused = false;
+        INPUT.set_paused(false);
         result
     }
     unsafe fn publish(&self) {
@@ -154,7 +142,7 @@ impl State {
                     0,
                 )
             };
-        let text=format!("{{\"frames\":{},\"map\":\"{}\",\"mod\":\"{}\",\"hp\":{},\"ammo\":{},\"projectiles\":{},\"position\":[{},{},{}],\"yaw\":{},\"pitch\":{},\"worldTriangles\":{},\"actorTriangles\":{},\"draws\":{},\"glError\":{},\"error\":\"{}\",\"paused\":{},\"input\":[{},{},{}],\"fps\":{},\"p95Ms\":{},\"p99Ms\":{},\"maxMs\":{}}}\n",self.frames,map,pack,hp,ammo,projectiles,pos.x,pos.y,pos.z,yaw,pitch,triangles,actors,draws,self.gl_error,self.error,self.paused,self.touch.held.move_x,self.touch.held.move_y,self.touch.buttons,p[1],p[2],p[3],p[4]);
+        let text=format!("{{\"frames\":{},\"map\":\"{}\",\"mod\":\"{}\",\"hp\":{},\"ammo\":{},\"projectiles\":{},\"position\":[{},{},{}],\"yaw\":{},\"pitch\":{},\"worldTriangles\":{},\"actorTriangles\":{},\"draws\":{},\"glError\":{},\"error\":\"{}\",\"paused\":{},\"input\":[{},{},{}],\"fps\":{},\"p95Ms\":{},\"p99Ms\":{},\"maxMs\":{}}}\n",self.frames,map,pack,hp,ammo,projectiles,pos.x,pos.y,pos.z,yaw,pitch,triangles,actors,draws,self.gl_error,self.error,INPUT.paused,INPUT.touch.held.move_x,INPUT.touch.held.move_y,INPUT.touch.buttons,p[1],p[2],p[3],p[4]);
         openstrike_write_status(text.as_ptr().cast(), text.len());
     }
 }
@@ -182,6 +170,7 @@ unsafe extern "C" fn boot(c: *mut c_void, _: *const u8, _: usize, w: i32, h: i32
     ffi::add_fn(c, surface, b"primaryInput\0", primary, 5);
     ffi::add_fn(c, surface, b"setPaused\0", pause, 1);
     JS_FreeValue(c, surface);
+    INPUT = input::GuestInput::new();
     STATE = Some(State {
         context: c,
         global,
@@ -192,8 +181,6 @@ unsafe extern "C" fn boot(c: *mut c_void, _: *const u8, _: usize, w: i32, h: i32
         perf: FrameTimes::new(),
         alpha: 0.,
         time: 0.,
-        touch: input::TouchInput::default(),
-        paused: false,
         frames: 0,
         gl_error: 0,
         error: "",
@@ -205,7 +192,7 @@ unsafe extern "C" fn before(_: *mut c_void, _: u32, _: u32, _: u32) -> i32 {
         return 0;
     };
     let now = openstrike_now_us();
-    let due = if s.paused {
+    let due = if INPUT.paused {
         s.clock.reset(now);
         s.perf.pause();
         0
@@ -214,15 +201,15 @@ unsafe extern "C" fn before(_: *mut c_void, _: u32, _: u32, _: u32) -> i32 {
     };
     s.alpha = s.clock.alpha();
     let ok = if let Some(g) = &mut s.game {
-        if !s.paused {
+        if !INPUT.paused {
             s.perf.record(now);
         }
-        let look = s.touch.take_look();
-        if !s.paused {
+        let look = INPUT.touch.take_look();
+        if !INPUT.paused {
             g.sim.apply_look(look[0], look[1]);
         }
         for _ in 0..due {
-            let input = s.touch.tick();
+            let input = INPUT.touch.tick();
             g.sim.tick(&g.world.map.collision, TICK_SECONDS, &input);
         }
         strike::dispatch(s.context, s.global, &mut g.sim)
@@ -287,8 +274,7 @@ unsafe extern "C" fn after(_: *mut c_void) -> i32 {
         Some(strike::HostCmd::ToMenu) => {
             glFinish();
             s.game = None;
-            s.clear_input();
-            s.paused = false;
+            INPUT.set_paused(false);
             s.time = 0.;
             s.clock.reset(openstrike_now_us());
         }
@@ -345,12 +331,13 @@ unsafe extern "C" fn release_graphics(current: i32) {
             g.world.release_graphics(current != 0);
             g.actors.release_graphics(current != 0);
         }
-        s.clear_input();
+        INPUT.touch.clear();
         s.clock.reset(openstrike_now_us());
         s.perf.pause();
     }
 }
 unsafe extern "C" fn shutdown(current: i32) {
+    INPUT.set_paused(true);
     if let Some(mut s) = STATE.take() {
         if current != 0 {
             glFinish();
@@ -381,4 +368,72 @@ pub extern "C" fn pocketjs_symbian_extension_v1() -> *const ExtensionV1 {
         release_graphics: Some(release_graphics),
     };
     &TABLE.base
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PAUSE_DURING_COERCION: JSValue = u64::MAX;
+
+    // Exercise the production callback entrypoints without an iOS/QuickJS
+    // linker. The sentinel models JS_ToInt32 calling a guest valueOf method.
+    #[export_name = "JS_ToInt32"]
+    unsafe extern "C" fn coerce(c: *mut JSContext, out: *mut i32, value: JSValue) -> i32 {
+        if value == PAUSE_DURING_COERCION {
+            pause(c, JS_UNDEFINED, 1, [1].as_mut_ptr());
+            *out = 1000;
+        } else {
+            *out = value as i32;
+        }
+        0
+    }
+
+    #[test]
+    fn guest_callbacks_are_independent_of_an_exclusively_borrowed_game() {
+        unsafe {
+            // The native turn retains its State borrow across guest dispatch.
+            // Callbacks must work even when that state contains no loaded game.
+            let state = &mut STATE;
+            INPUT.set_paused(false);
+            let c = core::ptr::null_mut();
+            primary(c, JS_UNDEFINED, 5, [1000, 500, 15, 1024, 2048].as_mut_ptr());
+            assert_eq!(INPUT.touch.held.move_x, 1.);
+            assert_eq!(INPUT.touch.buttons, 15);
+
+            // Death dispatch synchronously cancels held controls.
+            primary(c, JS_UNDEFINED, 5, [0; 5].as_mut_ptr());
+            assert!(!INPUT.touch.held.fire);
+            assert_eq!(INPUT.touch.held.move_x, 0.);
+
+            // HUD cleanup/mount may pause then resume in the same JS turn.
+            pause(c, JS_UNDEFINED, 1, [1].as_mut_ptr());
+            primary(
+                c,
+                JS_UNDEFINED,
+                5,
+                [1000, 1000, 15, 1024, 1024].as_mut_ptr(),
+            );
+            assert!(INPUT.paused);
+            assert_eq!(INPUT.touch.buttons, 0);
+            assert_eq!(INPUT.touch.take_look(), [0.; 2]);
+            let tick = INPUT.touch.tick();
+            assert!(!tick.jump && !tick.reload && !tick.fire);
+            pause(c, JS_UNDEFINED, 1, [0].as_mut_ptr());
+            assert!(!INPUT.paused);
+            assert_eq!(INPUT.touch.buttons, 0);
+
+            // Coercion must finish before any mutable INPUT borrow is created.
+            primary(
+                c,
+                JS_UNDEFINED,
+                5,
+                [PAUSE_DURING_COERCION, 0, 1, 0, 0].as_mut_ptr(),
+            );
+            assert!(INPUT.paused);
+            assert_eq!(INPUT.touch.buttons, 0);
+            assert!(state.is_none());
+            INPUT.set_paused(false);
+        }
+    }
 }
