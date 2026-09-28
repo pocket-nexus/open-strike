@@ -27,3 +27,5 @@ crates/openstrike-symbian/target/
 
 /crates/openstrike-3ds/target/
 __pycache__/
+
+/crates/openstrike-ipod/target/

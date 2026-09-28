@@ -69,6 +69,8 @@ export interface NativeStrike {
   __radar?: (state: RadarState | undefined) => void;
   __mapError?: (message: string) => void;
   touchInput?(buttons: number, lookX: number, lookY: number): void;
+  primaryInput?(moveX: number, moveY: number, buttons: number, lookX: number, lookY: number): void;
+  setPaused?(paused: number): void;
   /** Complete packs this host can render, in native resource order. */
   mods?: readonly ModDefinition[];
   initialMod?: number;
@@ -182,6 +184,8 @@ export const strike = {
   touchBlocked: () => touchBlocked,
   blockTouch: (blocked: boolean) => {
     touchBlocked = blocked;
+    native.setPaused?.(blocked ? 1 : 0);
+    if (blocked) native.primaryInput?.(0, 0, 0, 0, 0);
     if (blocked) native.touchInput?.(0, 0, 0);
   },
   radar: () => radar,
@@ -194,6 +198,7 @@ export const strike = {
     return () => { mapErrorHandlers.delete(fn); };
   },
   touchInput: (buttons: number, lookX = 0, lookY = 0) => native.touchInput?.(buttons, lookX, lookY),
+  primaryInput: (x: number, y: number, buttons: number, dx: number, dy: number) => native.primaryInput?.(x, y, buttons, dx, dy),
   /** The last state snapshot the host published (this tick). */
   state: (): StrikeState => current,
 

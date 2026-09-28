@@ -8,6 +8,7 @@ import { pushFocusGrid, pushFocusScope } from "@pocketjs/framework/input";
 import { hasFeature, platform } from "@pocketjs/framework/platform";
 import { onButtonPress } from "@pocketjs/framework/lifecycle";
 import { strike } from "./sdk.ts";
+import { PRIMARY_TOUCH } from "./control-platform.ts";
 
 const INK = "#e8f0f2";
 const DIM = "#8fa3ad";
@@ -86,7 +87,7 @@ function ModeMenu(props: { onSelect(online: boolean): void }) {
             </View>
           </Show>
         </View>
-        <Text class="text-xs mt-3 tracking-wide" style={{ textColor: DIM }}>↑↓ SELECT · ○ CONTINUE</Text>
+        <Text class="text-xs mt-3 tracking-wide" style={{ textColor: DIM }}>{PRIMARY_TOUCH ? "TAP TO CONTINUE" : "↑↓ SELECT · ○ CONTINUE"}</Text>
       </View>
     </View>
   );
@@ -108,6 +109,7 @@ function ModMenu(props: { onSelect(): void; onBack(): void }) {
       class="w-full h-full justify-center items-center"
       style={{ bgColor: "#05080cf5" }}
     >
+      {PRIMARY_TOUCH && <View focusable class="absolute items-center justify-center rounded-sm" onPress={props.onBack} style={{ insetL: 12, insetT: 8, width: 64, height: 44, bgColor: "#111a24" }}><Text class="text-xs" style={{ textColor: INK }}>BACK</Text></View>}
       <View class="flex-col items-center gap-1">
         <Text
           class={
@@ -136,7 +138,7 @@ function ModMenu(props: { onSelect(): void; onBack(): void }) {
                   strike.selectNetwork(false);
                   if (strike.selectMod(index())) props.onSelect();
                 }}
-                style={{ width: 330 * S }}
+                style={PRIMARY_TOUCH ? { width: 330, height: 44 } : { width: 330 * S }}
               >
                 <Text
                   class={S >= 2 ? "text-xl font-bold" : "text-sm font-bold"}
@@ -156,7 +158,7 @@ function ModMenu(props: { onSelect(): void; onBack(): void }) {
 
         </View>
         <Text class="text-xs mt-3 tracking-wide" style={{ textColor: DIM }}>
-          {hasFeature("display.auxiliary") ? "↑↓ SELECT · A CONTINUE" : "↑↓ SELECT · ○ CONTINUE"}
+          {PRIMARY_TOUCH ? "TAP A LOADOUT" : hasFeature("display.auxiliary") ? "↑↓ SELECT · A CONTINUE" : "↑↓ SELECT · ○ CONTINUE"}
         </Text>
       </View>
     </View>
@@ -181,7 +183,7 @@ function MapMenu(props: { onBack(): void }) {
   // d-pad semantics (↕ moves a whole row, ↔ moves within it).
   let grid!: Parameters<typeof pushFocusGrid>[0];
   onMount(() => {
-    const disposeGrid = pushFocusGrid(grid, { columns: 2, wrap: true });
+    const disposeGrid = pushFocusGrid(grid, { columns: PRIMARY_TOUCH ? 3 : 2, wrap: true });
     const disposeScope = pushFocusScope(grid, { autoFocus: true });
     onCleanup(() => {
       disposeScope();
@@ -221,7 +223,7 @@ function MapMenu(props: { onBack(): void }) {
         <View
           ref={(el) => (grid = el)}
           class="flex-row flex-wrap gap-1 mt-3 justify-center"
-          style={{ width: 300 * S }}
+          style={{ width: PRIMARY_TOUCH ? 444 : 300 * S }}
         >
           <For each={strike.maps as string[]}>
             {(raw, i) => (
@@ -229,7 +231,7 @@ function MapMenu(props: { onBack(): void }) {
                 focusable
                 onPress={() => deploy(i())}
                 class={ROW_BASE}
-                style={{ width: 145 * S }}
+                style={PRIMARY_TOUCH ? { width: 144, height: 44 } : { width: 145 * S }}
               >
                 <Text
                   class={S >= 2 ? "text-sm font-bold" : "text-xs font-bold"}
@@ -265,17 +267,17 @@ function MapMenu(props: { onBack(): void }) {
         <Show
           when={IS_SYMBIAN_E7}
           fallback={
-            <View class="flex-row gap-3 mt-3">
+            <View class={PRIMARY_TOUCH ? "flex-row items-center gap-3 mt-3" : "flex-row gap-3 mt-3"}>
               <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
-                ↕↔ SELECT
+                {PRIMARY_TOUCH ? "TAP A MAP" : "↕↔ SELECT"}
               </Text>
               <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
-                {hasFeature("display.auxiliary") ? "A DEPLOY" : "○ DEPLOY"}
+                {PRIMARY_TOUCH ? "TO DEPLOY" : hasFeature("display.auxiliary") ? "A DEPLOY" : "○ DEPLOY"}
               </Text>
               <Show when={true}>
-                <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
-                  SELECT BACK
-                </Text>
+                <View focusable={PRIMARY_TOUCH} onPress={props.onBack} style={PRIMARY_TOUCH ? { paddingT: 14, paddingB: 14, paddingL: 20, paddingR: 20, bgColor: "#111a24" } : {}}><Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+                  {PRIMARY_TOUCH ? "BACK" : "SELECT BACK"}
+                </Text></View>
               </Show>
             </View>
           }

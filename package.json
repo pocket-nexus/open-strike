@@ -19,6 +19,11 @@
     "test:3ds": "python3 -B -m unittest discover -s test -p test_3ds_deploy.py && bun test test/3ds-tooling.test.ts test/tactical-touch.test.ts && cargo test --locked --manifest-path crates/openstrike-3ds/Cargo.toml",
     "test:e2e:3ds": "bun scripts/e2e-3ds.ts",
     "deploy:3ds": "python3 scripts/deploy-3ds.py",
-    "vita:dev": "bun scripts/vita-dev.ts"
+    "vita:dev": "bun scripts/vita-dev.ts",
+    "ipod": "bun scripts/ipodtouch4.ts",
+    "build:ipod": "bun scripts/ipodtouch4.ts build",
+    "test:ipod": "bun test test/primary-touch.test.ts test/primary-touch-gesture.test.ts test/strike-sdk.test.ts && cargo test --locked --manifest-path crates/openstrike-ipod/Cargo.toml --features native-check",
+    "ipod:input": "bun scripts/ipod-device.ts",
+    "test:e2e:ipod": "bun scripts/ipod-device.ts verify"
   }
 }

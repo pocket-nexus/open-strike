@@ -16,7 +16,7 @@
 
 <p align="center"><em>A CS-like FPS on classic BSP maps — Pocket3D worlds, a PocketJS JSX HUD, gameplay in TypeScript.<br/>
 The full 3D game targets desktop (wgpu), PSP (sceGu), PS Vita
-(vita2d/GXM), Nintendo 3DS (citro3d/PICA200), and Nokia E7 (OpenGL ES 2). The bottom shot was captured
+(vita2d/GXM), Nintendo 3DS (citro3d/PICA200), iPod touch 4 (OpenGL ES 1), and Nokia E7 (OpenGL ES 2). The bottom shot was captured
 on a real PSP.</em></p>
 
 A CS-like FPS with offline bots and [Mac–PSP Companion crossplay](docs/CROSSPLAY.md), built on the **Pocket runtime family**: a Rust
@@ -120,6 +120,70 @@ ABI and viewport environment. Target artifacts are isolated under
 `dist/pocket/<target>` so concurrent PSP/Vita builds cannot overwrite one
 another. At runtime PocketJS compares target and host ABI; the plan checksum
 is build-time consistency data, not a runtime trust mechanism.
+
+## iPod touch 4
+
+The standalone `OpenStrike` User app targets iPod4,1 on iOS 6.1.6. It renders
+at 960×640 with a 480×320 landscape touch layout. PocketJS owns UIKit,
+QuickJS, the GLES1 context, depth surface, installation and capture. The
+application core owns cooked BSP resources, visibility, character animation
+and the shared 60 Hz simulation. Rendering interpolates between simulation
+ticks; touch aiming uses finger travel, so sensitivity does not depend on FPS.
+
+| Touch control | Action |
+| --- | --- |
+| Left lower area | Floating movement stick; drag farther to run |
+| Right area | Drag to aim |
+| FIRE | Hold to fire; drag on it to aim while firing |
+| JUMP | Jump on press |
+| RELOAD | Release inside the button to reload |
+| WALK | Toggle quiet walking |
+| PAUSE | Pause the round; resume or return to the menu |
+
+Contacts retain their original roles until release. Moving into FIRE does
+not start shooting. Movement, aim, fire and jump accept separate fingers.
+Pausing, death and leaving gameplay release held input; fingers held across
+a pause must lift before they can act again. The menus use 44-point rows and
+a three-column map grid.
+
+```sh
+bun run setup
+bun run ipod doctor
+bun run build:ipod
+bun run ipod deploy
+bun run ipod launch
+bun run ipod status --require-action
+bun run ipod capture
+```
+
+Set `POCKETJS_IPODTOUCH4_UDID` when more than one Apple device is connected.
+The shared PocketJS [iPod toolchain instructions](vendor/pocketjs/docs/IPODTOUCH4.md)
+cover first-time SDK and pinned USB SSH setup. The build reads verified
+`dist/maps/*.p3d`; `OPENSTRIKE_COOKED_MAPS` selects another cooked-map directory.
+Use the map cooker described below to produce those files on a fresh checkout.
+
+Optional loadouts use the same local manifests as the other handheld builds:
+
+```sh
+bun run build:ipod --mod /absolute/path/to/frieren/mod.json --mod /absolute/path/to/pikachu/mod.json
+bun run ipod deploy
+```
+
+The selected paths persist in ignored `.pocket/ipodtouch4/build-config.json`
+for subsequent builds and deployment. Set `OPENSTRIKE_MOD_PACKS='[]'` to reset to
+Classic. The app descriptor lives in `hosts/ipodtouch4/ipodtouch4.json`;
+artifacts are `vendor/pocketjs/dist/ipodtouch4/OpenStrike.app` and `.ipa`.
+The bundle id and URL scheme differ from other PocketJS apps on the device.
+
+`bun run ipod:input tap 240 176` sends a UIKit tap in landscape coordinates.
+`sequence <file>` accepts the test helper's multi-contact frame format in
+`test/fixtures/ipod-contacts.c`. `read` returns host and game telemetry over
+a fresh USB tunnel. The helper is a separate test executable; the shipping
+app contains no input-injection endpoint. Captures, frame-time samples and
+receipts belong under ignored `.pocket-build/validation/ipod-touch/`.
+`bun run test:e2e:ipod` checks four contacts, aim distance, fire/reload/walk,
+pause with a held finger, both local loadouts and repeated map entry on the
+connected device. Build with the Frieren and Pikachu packs before that test.
 
 ## Nintendo 3DS
 

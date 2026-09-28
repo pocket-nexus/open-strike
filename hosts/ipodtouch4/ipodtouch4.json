@@ -1,0 +1,21 @@
+{
+  "id": "openstrike",
+  "projectRoot": "../..",
+  "manifest": ".pocket/ipodtouch4/pocket.json",
+  "bundleId": "dev.pocket-stack.openstrike.ipod",
+  "bundleName": "OpenStrike.app",
+  "executable": "OpenStrike",
+  "title": "OpenStrike",
+  "scheme": "openstrike-ipod",
+  "receiptSlug": "openstrike-ipod",
+  "actionName": "openstrike_touch",
+  "keepAwake": true,
+  "nativeCore": {
+    "manifest": "crates/openstrike-ipod/Cargo.toml",
+    "library": "libopenstrike_ipod.a",
+    "features": ["native"],
+    "sources": ["hosts/ipodtouch4/bridge.c"]
+  },
+  "assets": ".pocket/ipodtouch4/assets",
+  "icon": "crates/openstrike-vita/static/sce_sys/icon0.png"
+}
