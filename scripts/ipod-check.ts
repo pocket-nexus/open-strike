@@ -149,6 +149,30 @@ export async function verifyIPod(device: {
   assert(!resumed.paused);
   assert(resumed.ammo >= 26, "held pre-pause finger must not resume shooting");
   assert.deepEqual(resumed.input, [0, 0, 0]);
+  // Drive a full cycle of the host's 8-bit contact IDs after the remount.
+  // Count guest actions as well as host releases: losing the first DOWN for
+  // either pre-mount ID must fail even if a later touch clears the stale ID.
+  const counter = (host: string, name: string) => {
+    const match = host.match(new RegExp(`^${name}=(\\d+)$`, "m"));
+    assert(match, `missing host counter ${name}`);
+    return Number(match[1]);
+  };
+  const reuseBefore = await snapshot("touch-id-reuse-before");
+  const reuseFrames: string[] = [];
+  for (let i = 0; i < 256; i++) {
+    reuseFrames.push("60 1 0 424 216 1", "60 1 0 424 216 0");
+  }
+  console.log("Checking 256 contact lifetimes after pause/remount...");
+  device.play(reuseFrames.join("\n") + "\n");
+  const reuseAfter = await snapshot("touch-id-reuse-after");
+  for (const name of ["completed_touch_sequences", "action_sequence"]) {
+    assert.equal(
+      counter(reuseAfter.host, name) - counter(reuseBefore.host, name),
+      256,
+      `${name}: every reused ID must deliver its first gameplay touch`,
+    );
+  }
+  assert.deepEqual(reuseAfter.g.input, [0, 0, 0]);
   await Bun.sleep(15000);
   const quiet = (await snapshot("classic-quiet-frametime")).g;
   console.log(
