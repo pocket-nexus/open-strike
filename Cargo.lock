@@ -1635,9 +1635,6 @@ dependencies = [
 [[package]]
 name = "pocket-psp-ge"
 version = "0.1.0"
-dependencies = [
- "psp",
-]
 
 [[package]]
 name = "pocket-ui-surface"
@@ -1779,19 +1776,6 @@ name = "profiling"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5"
-
-[[package]]
-name = "psp"
-version = "0.3.12"
-source = "git+https://github.com/pocket-nexus/rust-psp.git?rev=2cbaf8c9bc72569c76240a1d9743de10731e5f6b#2cbaf8c9bc72569c76240a1d9743de10731e5f6b"
-dependencies = [
- "bitflags 2.13.0",
- "libm",
- "num_enum",
- "num_enum_derive",
- "paste",
- "unstringify",
-]
 
 [[package]]
 name = "pxfm"
@@ -2356,12 +2340,6 @@ name = "unicode-width"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
-
-[[package]]
-name = "unstringify"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9612d66420ead229348915b911ad9689e79dfc347fe7a876a82551c8eab36b5e"
 
 [[package]]
 name = "urlencoding"
