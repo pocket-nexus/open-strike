@@ -94,7 +94,7 @@ for (const f of bsps) {
   const stem = f.slice(0, -4);
   const src = `${mapsRoot}/maps/${f}`;
   const p3d = `${repo}dist/maps/${stem}.p3d`;
-  await cookMap(src, p3d, [`${mapsRoot}/support`], `${repo}vendor/pocketjs/engine/pocket3d`);
+  await cookMap(src, p3d, [`${mapsRoot}/support`], `${repo}domain`);
 }
 
 // Existing user-supplied maps are valid inputs only after the pinned engine
@@ -106,7 +106,7 @@ if (!mapFiles.includes(`${mapName}.p3d`)) {
 }
 for (const f of mapFiles) {
   await $`cargo run --release --locked -q -p pocket3d-cook -- --verify-cooked ${mapDirectory}/${f}`.cwd(
-    `${repo}vendor/pocketjs/engine/pocket3d`,
+    `${repo}domain`,
   );
 }
 

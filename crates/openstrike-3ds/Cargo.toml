@@ -19,8 +19,8 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("bench"))'
 openstrike-mods = { path = "../openstrike-mods" }
 openstrike-character = { path = "../openstrike-character" }
 openstrike-core = { path = "../openstrike-core", default-features = false, features = ["libm"] }
-pocket3d-bsp = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-bsp", default-features = false, features = ["libm"] }
-pocket3d-gles2 = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-gles2" }
+pocket3d-bsp = { path = "../../domain/crates/pocket3d-bsp", default-features = false, features = ["libm"] }
+pocket3d-gles2 = { path = "../../domain/crates/pocket3d-gles2" }
 glam = { version = "0.33", default-features = false, features = ["libm", "scalar-math"] }
 libm = "0.2"
 

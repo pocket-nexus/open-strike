@@ -77,7 +77,7 @@ async function main() {
   ] as const) await run([join(tools, tool), ...options, map], out, join(out, tool + ".log"));
   const bsp = map.replace(/\.map$/, ".bsp"), cooked = map.replace(/\.map$/, ".p3d");
   if (readFileSync(bsp).readInt32LE(0) !== 30) throw new Error("Expected GoldSrc BSP version 30");
-  await run(["cargo", "run", "--release", "--locked", "-q", "-p", "pocket3d-cook", "--", bsp, "--subdivide", String(subdivide), "--verify", "-o", cooked], join(root, "vendor/pocketjs/engine/pocket3d"), join(out, "cook.log"));
+  await run(["cargo", "run", "--release", "--locked", "-q", "-p", "pocket3d-cook", "--", bsp, "--subdivide", String(subdivide), "--verify", "-o", cooked], join(root, "domain"), join(out, "cook.log"));
   const files = [scene, map, map.replace(/\.map$/, ".wad"), bsp, cooked];
   writeFileSync(join(out, "build.json"), JSON.stringify({
     subdivide,

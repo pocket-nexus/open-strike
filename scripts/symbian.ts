@@ -257,7 +257,7 @@ export function createSymbianBuildPaths(
       pocketjs,
       "hosts/nokia-e7/targets/armv6-symbian-eabi.json",
     ),
-    pocket3dWorkspace: resolve(pocketjs, "engine/pocket3d"),
+    pocket3dWorkspace: resolve(repository, "domain"),
     nativeManifest: resolve(
       repository,
       "crates/openstrike-symbian/Cargo.toml",
@@ -583,7 +583,7 @@ function validatePocketJsRoot(
     paths.pocketBuild,
     paths.toolchainManifest,
     paths.targetSpec,
-    resolve(paths.pocket3dWorkspace, "../Cargo.toml"),
+    resolve(paths.pocketjs, "engine/Cargo.toml"),
   ];
   const missing = required.filter((path) => !existsSync(path));
   if (missing.length > 0) {

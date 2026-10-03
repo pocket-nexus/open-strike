@@ -40,7 +40,7 @@ if (command === "build" || command === "deploy") {
   mkdirSync(`${staging}/assets/maps`, { recursive: true });
   for (const file of files) {
     await $`cargo run --release --locked -q -p pocket3d-cook -- --verify-cooked ${maps}/${file}`.cwd(
-      `${root}/vendor/pocketjs/engine/pocket3d`,
+      `${root}/domain`,
     );
     cpSync(`${maps}/${file}`, `${staging}/assets/maps/${file}`);
   }

@@ -26,7 +26,7 @@ async function run(command: string[]) {
   const child = Bun.spawn(command,{cwd:root,stdout:"inherit",stderr:"inherit"});
   if (await child.exited !== 0) throw new Error(`${command[0]} failed`);
 }
-await run(["cargo","run","--release","--locked","-q","--manifest-path","vendor/pocketjs/engine/pocket3d/crates/pocket3d-cook/Cargo.toml","--",bsp,"--subdivide",String(subdivide),"--verify","-o",cooked]);
+await run(["cargo","run","--release","--locked","-q","--manifest-path","domain/crates/pocket3d-cook/Cargo.toml","--",bsp,"--subdivide",String(subdivide),"--verify","-o",cooked]);
 const hash = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
 const psp = value("--psp-map");
 if (psp && hash(resolve(psp)) !== hash(cooked)) throw new Error("The web cook differs from --psp-map; use the same source, cooker and subdivision");

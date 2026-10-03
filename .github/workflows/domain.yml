@@ -1,0 +1,33 @@
+name: OpenStrike domain compiler
+on:
+  pull_request:
+    paths: ['domain/**', 'crates/openstrike/**', 'scripts/cook-map.ts', 'scripts/symbian.ts', 'scripts/gu-demo.ts', 'test/cook-map.test.ts', 'test/symbian-tooling.test.ts', 'Cargo.toml', 'Cargo.lock', 'vendor/pocketjs', '.github/workflows/domain.yml']
+  push:
+    branches: [main]
+    paths: ['domain/**', 'crates/openstrike/**', 'scripts/cook-map.ts', 'scripts/symbian.ts', 'scripts/gu-demo.ts', 'test/cook-map.test.ts', 'test/symbian-tooling.test.ts', 'Cargo.toml', 'Cargo.lock', 'vendor/pocketjs', '.github/workflows/domain.yml']
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: oven-sh/setup-bun@v2
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            domain
+            domain/crates/pocket3d-vita
+            domain/crates/pocket3d-gles2
+      - run: bun run setup
+      - run: cargo test --locked --manifest-path domain/Cargo.toml
+      - run: cargo check --locked --manifest-path domain/Cargo.toml -p pocket3d-bsp --no-default-features --features libm
+      - run: cargo test --locked --manifest-path domain/crates/pocket3d-vita/Cargo.toml
+      - run: cargo test --locked --manifest-path domain/crates/pocket3d-gles2/Cargo.toml
+      - run: cargo check --locked -p openstrike
+      - run: bun test test/cook-map.test.ts test/symbian-tooling.test.ts test/psp-toolchain.test.ts
