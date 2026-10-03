@@ -475,6 +475,20 @@ toward and away from an opponent while collision, AI, damage and round rules run
 The HUD callback, DrawList build and UI GE submission have separate timing fields.
 Rebuild without a benchmark flag for interactive acceptance.
 
+## Shared device mechanisms
+
+OpenStrike owns its BSP/FPS rendering and compiler policy. Pocket3D names a
+family of reusable mechanisms, rather than one required scene engine. Atlas
+owns its PlaceIR and renderers independently.
+
+The pinned `vendor/pocketjs/devices/vita/pocket-vita-gxm` supplies mapped GXM
+memory and shader registration to the existing `pocket3d-vita` BSP renderer.
+Atlas uses the same kernel revision directly. OpenStrike retains its embedded
+GXPs, world layouts, visibility, materials and render passes; it does not enable
+Atlas's optional runtime shader compiler. The BSP renderer still physically
+lives in PocketJS during this first extraction. Hosts, input, guest execution
+and debug transports remain PocketJS responsibilities.
+
 ## PS Vita
 
 The Vita target runs the same simulation, JavaScript rules and Solid JSX HUD
