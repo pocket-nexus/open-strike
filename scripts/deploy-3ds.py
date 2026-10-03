@@ -4,6 +4,9 @@ import argparse
 import ftplib
 import hashlib
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from uuid import uuid4
 
@@ -96,4 +99,9 @@ def main():
 
 
 if __name__ == "__main__":
+    if "--under-device-lease" not in sys.argv:
+        sys.exit(subprocess.call(["bun", str(ROOT / "scripts/deploy-3ds.ts"), *sys.argv[1:]]))
+    sys.argv.remove("--under-device-lease")
+    if "3ds:wire" not in json.loads(os.environ.get("POCKET_DEVICE_LEASES", "{}")):
+        raise RuntimeError("3DS deployment requires the PocketJS device lease wrapper")
     main()
