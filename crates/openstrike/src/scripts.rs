@@ -223,7 +223,7 @@ fn round_script(mut game: OpenStrike, args: &Args) -> Result<()> {
                     let tr =
                         game.map
                             .collision
-                            .trace(pocket3d::bsp::Hull::Point, player_eye, bot_eye);
+                            .trace(pocket3d_bsp::Hull::Point, player_eye, bot_eye);
                     tr.fraction >= 1.0
                 };
                 let dist = (bot_pos - player_eye).length();
@@ -487,7 +487,7 @@ fn walk_script(mut game: OpenStrike, args: &Args) -> Result<()> {
         if game
             .map
             .collision
-            .hull_contents(pocket3d::bsp::Hull::Stand, pos)
+            .hull_contents(pocket3d_bsp::Hull::Stand, pos)
             == -2
         {
             bail!("FAIL slide: hull stuck in solid at {pos:?}");

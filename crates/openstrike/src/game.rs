@@ -6,7 +6,7 @@
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-use pocket3d::bsp::MapData;
+use pocket3d_bsp::MapData;
 use pocket3d::input::Input;
 use pocket3d::prelude::*;
 use pocket3d::winit::event::MouseButton;
@@ -56,7 +56,7 @@ impl OpenStrike {
             scene.lighting.sun_color = sun.color * 0.9;
         }
         if let Some(world) = map.entities.iter().find(|e| e.classname() == "worldspawn") {
-            if let Ok(Some(sky)) = pocket3d::bsp::entities::parse_sky(world) {
+            if let Ok(Some(sky)) = pocket3d_bsp::entities::parse_sky(world) {
                 scene.sky.zenith = sky.zenith;
                 scene.sky.horizon = sky.horizon;
             }
@@ -88,7 +88,7 @@ impl OpenStrike {
 
     /// Upload GPU resources (called from `Game::init` or headless setup).
     pub fn upload_world(&mut self, gpu: &Gpu, renderer: &Renderer) {
-        let world = Arc::new(WorldModel::from_bsp(
+        let world = Arc::new(crate::bsp_world::upload(
             gpu,
             &renderer.world_material_layout,
             &renderer.samplers,

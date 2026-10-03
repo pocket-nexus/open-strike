@@ -25,8 +25,8 @@ psp = { git = "https://github.com/pocket-nexus/rust-psp.git", rev = "2cbaf8c9bc7
 libquickjs-sys = { git = "https://github.com/pocket-nexus/quickjs-rs.git", rev = "ba5bdd0dc013518768e76cd9e05cd30ed53dd35b" }
 pocketjs-psp = { path = "../../vendor/pocketjs/hosts/psp" }
 pocketjs-core = { path = "../../vendor/pocketjs/engine/core" }
-pocket3d-bsp = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-bsp", default-features = false, features = ["libm"] }
-pocket3d-gu = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-gu" }
+pocket3d-bsp = { path = "../../domain/crates/pocket3d-bsp", default-features = false, features = ["libm"] }
+pocket3d-gu = { path = "../../domain/crates/pocket3d-gu" }
 openstrike-core = { path = "../openstrike-core", default-features = false, features = ["libm"] }
 glam = { version = "0.33", default-features = false, features = ["libm"] }
 libm = "0.2"

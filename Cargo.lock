@@ -1463,6 +1463,7 @@ dependencies = [
  "pocket-ui-surface",
  "pocket-ui-wgpu",
  "pocket3d",
+ "pocket3d-bsp",
  "pocketjs-core",
  "wgpu",
 ]
@@ -1632,6 +1633,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "pocket-psp-ge"
+version = "0.1.0"
+
+[[package]]
 name = "pocket-ui-surface"
 version = "0.1.0"
 dependencies = [
@@ -1668,7 +1673,6 @@ dependencies = [
  "log",
  "png",
  "pocket3d-anim",
- "pocket3d-bsp",
  "pocket3d-mesh",
  "pollster",
  "serde_json",
@@ -1690,6 +1694,7 @@ dependencies = [
  "anyhow",
  "glam",
  "log",
+ "pocket-psp-ge",
 ]
 
 [[package]]

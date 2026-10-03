@@ -149,7 +149,7 @@ export async function build(argv = process.argv.slice(2)) {
         `Missing cooked map ${path}; supply OPENSTRIKE_COOKED_MAPS (see README)`,
       );
     await $`cargo run --release --locked -q -p pocket3d-cook -- --verify-cooked ${path}`.cwd(
-      resolve(framework, "engine/pocket3d"),
+      resolve(root, "domain"),
     );
   }
   const host = await prepareHost();
@@ -158,6 +158,8 @@ export async function build(argv = process.argv.slice(2)) {
     "utf8",
   ).match(/channel\s*=\s*"([^"]+)"/)?.[1];
   if (!toolchain) throw new Error("Missing PocketJS 3DS Rust toolchain pin");
+  // Resolve rustc explicitly: a system/Homebrew rustc may precede rustup proxies.
+  const rustc = (await $`rustup which --toolchain ${toolchain} rustc`.text()).trim();
   // Optional local packs use the same validated catalogue as PSP.
   await $`rustup run ${toolchain} cargo build --release --locked --manifest-path ${crate}/Cargo.toml --target armv6k-nintendo-3ds -Zbuild-std=core,alloc,compiler_builtins -Zbuild-std-features=compiler-builtins-mem --features embedded-map-catalog`
     .cwd(root)
@@ -167,6 +169,7 @@ export async function build(argv = process.argv.slice(2)) {
         outputDirectory: guest,
         embedApp: true,
       }),
+      RUSTC: rustc,
       OPENSTRIKE_MOD_PACKS: JSON.stringify(modPaths),
       OPENSTRIKE_INITIAL_MOD: "classic",
       OPENSTRIKE_CHARACTER_ASSET: "",
@@ -196,6 +199,7 @@ export async function build(argv = process.argv.slice(2)) {
         outputDirectory: containerPath(guest),
         embedApp: true,
       }),
+      POCKETJS_PICA_INCLUDE: containerPath(resolve(framework, "devices/3ds/pocket-3ds-pica/include")),
       POCKETJS_CORE_LIB: containerPath(
         resolve(
           crate,

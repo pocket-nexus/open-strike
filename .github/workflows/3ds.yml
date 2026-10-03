@@ -17,7 +17,7 @@ on:
         "test/tactical-touch.test.ts",
         "pocket.json",
         "package.json",
-        "vendor/pocketjs",
+        "domain/**", "vendor/pocketjs",
         ".github/workflows/3ds.yml",
       ]
   push:
@@ -37,7 +37,7 @@ on:
         "test/tactical-touch.test.ts",
         "pocket.json",
         "package.json",
-        "vendor/pocketjs",
+        "domain/**", "vendor/pocketjs",
         ".github/workflows/3ds.yml",
       ]
   workflow_dispatch: {}

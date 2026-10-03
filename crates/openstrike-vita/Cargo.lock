@@ -135,6 +135,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "pocket-psp-ge"
+version = "0.1.0"
+
+[[package]]
 name = "pocket-vita-gxm"
 version = "0.1.0"
 dependencies = [
@@ -149,6 +153,7 @@ dependencies = [
  "anyhow",
  "glam",
  "log",
+ "pocket-psp-ge",
 ]
 
 [[package]]

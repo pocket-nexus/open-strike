@@ -19,8 +19,11 @@ export function mapCookKey(source: string, wadDirs: readonly string[], cooker: s
       if (name.toLowerCase().endsWith(".wad")) files.add(resolve(dir, name));
     }
   }
-  for (const crate of ["pocket3d-bsp", "pocket3d-cook"]) {
-    const root = join(cooker, "crates", crate);
+  const compilerRoots = [
+    ...["pocket3d-bsp", "pocket3d-cook"].map((crate) => join(cooker, "crates", crate)),
+    resolve(cooker, "../vendor/pocketjs/devices/psp/pocket-psp-ge"),
+  ];
+  for (const root of compilerRoots) {
     files.add(join(root, "Cargo.toml"));
     const walk = (dir: string) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -31,10 +34,10 @@ export function mapCookKey(source: string, wadDirs: readonly string[], cooker: s
     walk(join(root, "src"));
   }
   // Dependency resolution can change cooking without changing the source.
-  files.add(resolve(cooker, "../Cargo.lock"));
+  files.add(resolve(cooker, "Cargo.lock"));
   const inputs = [...files].sort().map((path) => [path, hashFile(path)]);
   // Search order selects the winning texture when WADs contain the same name.
-  return createHash("sha256").update(JSON.stringify({ version: 2, subdivide: 32, searchDirs: dirs, inputs })).digest("hex");
+  return createHash("sha256").update(JSON.stringify({ version: 3, subdivide: 32, searchDirs: dirs, inputs })).digest("hex");
 }
 
 export function mapCacheMatches(cooked: string, key: string): boolean {

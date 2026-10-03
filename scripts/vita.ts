@@ -92,7 +92,7 @@ for (const file of bsps) {
   const stem = file.slice(0, -4);
   const source = `${mapsRoot}/maps/${file}`;
   const cooked = `${repo}dist/maps/${stem}.p3d`;
-  await cookMap(source, cooked, [`${mapsRoot}/support`], `${repo}vendor/pocketjs/engine/pocket3d`);
+  await cookMap(source, cooked, [`${mapsRoot}/support`], `${repo}domain`);
 }
 
 // Recreate the application overlay's map subtree so a removed source map
@@ -105,7 +105,7 @@ const mapDirectory = resolve(cookedMaps ?? `${repo}dist/maps`);
 const cookedFiles = readdirSync(mapDirectory).filter((name) => name.endsWith(".p3d") && !name.startsWith("."));
 if (!cookedFiles.length) throw new Error(`No cooked maps in ${mapDirectory}`);
 for (const file of cookedFiles) {
-  await $`cargo run --release --locked -q -p pocket3d-cook -- --verify-cooked ${mapDirectory}/${file}`.cwd(`${repo}vendor/pocketjs/engine/pocket3d`);
+  await $`cargo run --release --locked -q -p pocket3d-cook -- --verify-cooked ${mapDirectory}/${file}`.cwd(`${repo}domain`);
   cpSync(`${mapDirectory}/${file}`, `${stagedMaps}/${file}`);
 }
 

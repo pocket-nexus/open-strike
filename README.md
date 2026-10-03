@@ -485,8 +485,9 @@ The pinned `vendor/pocketjs/devices/vita/pocket-vita-gxm` supplies mapped GXM
 memory and shader registration to the existing `pocket3d-vita` BSP renderer.
 Atlas uses the same kernel revision directly. OpenStrike retains its embedded
 GXPs, world layouts, visibility, materials and render passes; it does not enable
-Atlas's optional runtime shader compiler. The BSP renderer still physically
-lives in PocketJS during this first extraction. Hosts, input, guest execution
+Atlas's optional runtime shader compiler. BSP compiler and renderer sources
+now live in `domain/`. GE frame storage/texture layout and PICA texture storage
+also come from the pinned PocketJS device kernels. Hosts, input, guest execution
 and debug transports remain PocketJS responsibilities.
 
 ## PS Vita
@@ -564,3 +565,11 @@ grows by appending, never by renumbering.
 See [Blender maps](docs/BLENDER_MAPS.md) for the Blender → Valve 220 → GoldSrc BSP →
 Pocket3D toolchain and the editable WWDC24 atrium, stairs and presentation-hall
 scene. Generated maps and `.blend` files stay outside Git.
+
+### Pocket3D ownership
+
+OpenStrike's BSP compiler, `.p3d` format, collision and GE/GXM/GLES2 renderers
+live in [`domain/`](domain/README.md). PocketJS supplies the pinned host,
+packaging/toolchains and thin native device kernels. The desktop BSP adapter is
+also owned here; PocketJS's generic widget, mesh, animation and VRM code stays
+independent of BSP. Atlas owns its own PlaceIR compiler and scene renderer.

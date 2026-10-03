@@ -17,8 +17,8 @@ native = ["pocketjs-symbian-core/bare-platform", "pocketjs-symbian-core/gles1"]
 openstrike-core = { path = "../openstrike-core", default-features = false, features = ["libm"] }
 openstrike-character = { path = "../openstrike-character" }
 openstrike-mods = { path = "../openstrike-mods" }
-pocket3d-bsp = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-bsp", default-features = false, features = ["libm"] }
-pocket3d-gles2 = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-gles2" }
+pocket3d-bsp = { path = "../../domain/crates/pocket3d-bsp", default-features = false, features = ["libm"] }
+pocket3d-gles2 = { path = "../../domain/crates/pocket3d-gles2" }
 pocketjs-symbian-core = { package = "pocketjs-ui-cabi", path = "../../vendor/pocketjs/engine/ui-cabi", default-features = false }
 glam = { version = "0.33", default-features = false, features = ["libm", "scalar-math"] }
 libm = "0.2"

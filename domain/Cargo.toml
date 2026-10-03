@@ -1,0 +1,14 @@
+# OpenStrike owns GoldSrc/BSP semantics, the .p3d format and its cookers/renderers.
+[workspace]
+resolver = "2"
+members = ["crates/pocket3d-bsp", "crates/pocket3d-cook"]
+exclude = ["crates/pocket3d-gu", "crates/pocket3d-vita", "crates/pocket3d-gles2", "crates/gu-demo"]
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+[workspace.dependencies]
+pocket3d-bsp = { path = "crates/pocket3d-bsp" }
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"

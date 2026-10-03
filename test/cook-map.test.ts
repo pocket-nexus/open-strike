@@ -10,15 +10,19 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 test("map cache tracks WAD content, additions, removal, and cooker changes despite preserved timestamps", () => {
   const root = mkdtempSync(join(tmpdir(), "openstrike-map-")); roots.push(root);
   const source = join(root, "maps", "fixture.bsp"), wad = join(root, "support", "base.wad");
-  const cooker = join(root, "engine", "pocket3d");
-  for (const dir of ["maps", "support", "engine/pocket3d/crates/pocket3d-bsp/src", "engine/pocket3d/crates/pocket3d-cook/src"])
+  const cooker = join(root, "domain");
+  for (const dir of ["maps", "support", "domain/crates/pocket3d-bsp/src", "domain/crates/pocket3d-cook/src"])
     mkdirSync(join(root, dir), { recursive: true });
   writeFileSync(source, "bsp"); writeFileSync(wad, "before");
-  writeFileSync(join(root, "engine/Cargo.lock"), "lock");
+  writeFileSync(join(root, "domain/Cargo.lock"), "lock");
   for (const crate of ["pocket3d-bsp", "pocket3d-cook"]) {
     writeFileSync(join(cooker, "crates", crate, "Cargo.toml"), "manifest");
     writeFileSync(join(cooker, "crates", crate, "src/lib.rs"), "source");
   }
+  const kernel = join(root, "vendor/pocketjs/devices/psp/pocket-psp-ge");
+  mkdirSync(join(kernel, "src"), { recursive: true });
+  writeFileSync(join(kernel, "Cargo.toml"), "kernel manifest");
+  writeFileSync(join(kernel, "src/lib.rs"), "swizzle before");
   const key = () => mapCookKey(source, [join(root, "support")], cooker);
   const override = join(root, "override");
   mkdirSync(override);
@@ -35,6 +39,9 @@ test("map cache tracks WAD content, additions, removal, and cooker changes despi
   rmSync(extra); expect(key()).toBe(changed);
   writeFileSync(join(cooker, "crates/pocket3d-bsp/src/lib.rs"), "fixed cooker");
   expect(key()).not.toBe(changed);
+  const beforeKernel = key();
+  writeFileSync(join(kernel, "src/lib.rs"), "swizzle after");
+  expect(key()).not.toBe(beforeKernel);
   const cooked = join(root, "fixture.p3d"); writeFileSync(cooked, "cooked map");
   expect(mapCacheMatches(cooked, key())).toBe(false);
   recordMapCook(cooked, key()); expect(mapCacheMatches(cooked, key())).toBe(true);

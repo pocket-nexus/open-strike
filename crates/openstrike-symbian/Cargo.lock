@@ -69,10 +69,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pocket-psp-ge"
+version = "0.1.0"
+
+[[package]]
 name = "pocket3d-bsp"
 version = "0.1.0"
 dependencies = [
  "glam",
+ "pocket-psp-ge",
 ]
 
 [[package]]

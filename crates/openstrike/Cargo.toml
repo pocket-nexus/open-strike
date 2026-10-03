@@ -9,7 +9,8 @@ repository.workspace = true
 [dependencies]
 openstrike-character = { path = "../openstrike-character" }
 openstrike-core = { path = "../openstrike-core" }
-pocket3d = { workspace = true, features = ["bsp"] }
+pocket3d = { workspace = true }
+pocket3d-bsp = { workspace = true }
 pocket-mod = { workspace = true }
 pocket-ui-wgpu = { workspace = true }
 pocketjs-core = { workspace = true }
