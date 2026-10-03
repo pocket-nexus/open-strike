@@ -8,7 +8,7 @@
  #include "input.h"
  #include "pocket_core.h"
  #include "qjs.h"
-@@ -670,9 +671,13 @@
+@@ -697,10 +698,14 @@
  
  int main(void) {
    gfxInitDefault();
@@ -23,10 +23,12 @@
 +  if (!C3D_Init(2 * 1024 * 1024)) fail("GPU command buffer allocation failed");
  #ifndef POCKETJS_CAPTURE
    /* Debug UI must never make an otherwise admissible guest unbootable. */
-@@ -903,6 +907,26 @@
+   (void)devmenu_init();
+@@ -946,6 +951,27 @@
        continue;
  #endif
      }
++    u64 phase_js_end __attribute__((unused)) = svcGetSystemTick();
 +    u64 offload_ui_ticks = svcGetSystemTick() - offload_cpu_start;
 +    begin_frame_wait(
 +#ifdef POCKETJS_CAPTURE
@@ -49,8 +51,8 @@
 +    }
      /* Animations always advance at the fixed 1/60 timestep; this host
       * presents at the same rate, so it is one tick per frame. */
-     ui_tick();
-@@ -915,21 +939,6 @@
+     u64 phase_tick __attribute__((unused)) = svcGetSystemTick();
+@@ -961,22 +987,7 @@
      }
  #endif
  
@@ -69,10 +71,12 @@
 -    accept_guest(&guest, &runtime_state, &failures, run_frame);
 -#endif
 -    offload_cpu_start = svcGetSystemTick();
+-    u64 phase_gpu __attribute__((unused)) = offload_cpu_start;
++    u64 phase_gpu __attribute__((unused)) = svcGetSystemTick();
      gfx_begin_frame();
  #ifdef POCKETJS_MEDIA
      media_present();
-@@ -965,11 +974,20 @@
+@@ -1012,13 +1023,22 @@
      C3D_FrameDrawOn(primary_target);
      /* C3D_FrameDrawOn resets the viewport, so this comes after it. */
      C3D_SetViewport(0, 0, VIEW_H, VIEW_W);
@@ -94,7 +98,18 @@
 +    /* Native/UI uploads flush their changed ranges; immutable caches stay resident. */
 +    C3D_FrameEnd(GX_CMDLIST_FLUSH);
      offload_measure((unsigned)((offload_ui_ticks + svcGetSystemTick() - offload_cpu_start) * 1000000 / SYSCLOCK_ARM11));
-@@ -1038,6 +1055,16 @@
+ #if !defined(POCKETJS_CAPTURE) && !defined(POCKETJS_OFFLOAD)
+     {
+@@ -1030,7 +1050,7 @@
+       u64 phase_end = svcGetSystemTick();
+       if (previous_frame != UINT32_MAX && run_frame == previous_frame + 1) {
+         devserver_set_frame_timing(
+-          ticks_to_us(phase_tick - phase_js),
++          ticks_to_us(phase_js_end - phase_js),
+           ticks_to_us(phase_draw - phase_tick),
+           ticks_to_us(phase_draw_end - phase_draw),
+           ticks_to_us(phase_end - phase_gpu),
+@@ -1104,6 +1124,16 @@
      }
      frame += 1;
  #endif
@@ -113,7 +128,7 @@
    begin_frame_wait(
 --- a/src/qjs.c
 +++ b/src/qjs.c
-@@ -757,6 +757,8 @@
+@@ -810,6 +810,8 @@
  // lifecycle
  // ---------------------------------------------------------------------------
  
@@ -122,7 +137,7 @@
  bool qjs_boot(
    const char *source,
    size_t source_length,
-@@ -799,6 +801,10 @@
+@@ -852,6 +854,10 @@
     * this at mount, so install it beforehand. */
    JS_SetPropertyStr(context, global, "__simHz", JS_NewInt32(context, POCKETJS_SIMULATION_HZ));
  
@@ -133,7 +148,7 @@
    JSValue result = JS_Eval(context, source, source_length, "app.js", JS_EVAL_TYPE_GLOBAL);
    if (JS_IsException(result)) {
      take_exception();
-@@ -823,6 +829,10 @@
+@@ -876,6 +882,10 @@
    int32_t right_analog
  ) {
    if (context == NULL) return false;
@@ -144,7 +159,7 @@
    offload_frame();
    coverage_used = false;
    JSValue arguments[6] = {
-@@ -856,6 +866,11 @@
+@@ -909,6 +919,11 @@
      JS_FreeValue(context, result);
      return false;
    }
@@ -156,7 +171,7 @@
    /* Leak guard: the return value is freed every frame. */
    JS_FreeValue(context, result);
    return drain_jobs();
-@@ -870,6 +885,7 @@
+@@ -923,6 +938,7 @@
    media_forget_guest();
  #endif
    if (context != NULL) {

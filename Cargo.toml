@@ -25,7 +25,7 @@ pocket3d = { path = "vendor/pocketjs/engine/pocket3d/crates/pocket3d" }
 pocket3d-bsp = { path = "vendor/pocketjs/engine/pocket3d/crates/pocket3d-bsp" }
 pocket-mod = { path = "vendor/pocketjs/engine/crates/pocket-mod" }
 pocket-ui-wgpu = { path = "vendor/pocketjs/engine/crates/pocket-ui-wgpu" }
-pocketjs-core = { path = "vendor/pocketjs/engine/core", features = ["std"] }
+pocketjs-core = { path = "vendor/pocketjs/engine/core" }
 
 wgpu = "25"
 glam = "0.33"
