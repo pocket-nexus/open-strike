@@ -573,3 +573,18 @@ live in [`domain/`](domain/README.md). PocketJS supplies the pinned host,
 packaging/toolchains and thin native device kernels. The desktop BSP adapter is
 also owned here; PocketJS's generic widget, mesh, animation and VRM code stays
 independent of BSP. Atlas owns its own PlaceIR compiler and scene renderer.
+
+### Device validation ownership
+
+Physical 3DS deployment (`bun run deploy:3ds`, including the compatible Python
+entry point) holds PocketJS's `3ds:wire` lease for the complete FTP publication
+and readback. Vita development inherits the shared USB control/transport leases
+from the pinned host tools. Independent worktrees using those tools cannot
+replace a device during another owner's run; nested commands inherit the lease.
+Raw tools and older checkouts still require coordination. See
+[PocketJS device validation](vendor/pocketjs/docs/DEVICE-VALIDATION.md).
+
+FTP readback proves delivered bytes. It does not prove that OpenStrike launched,
+that a BSP map rendered correctly, or that a gameplay/frame-time scenario passed.
+Those policies and evidence remain OpenStrike's responsibility; Atlas authoring,
+PlaceIR, target recipes and camera acceptance do not enter this repository.
