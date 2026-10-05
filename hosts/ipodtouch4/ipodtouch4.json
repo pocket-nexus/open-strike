@@ -17,5 +17,5 @@
     "sources": ["hosts/ipodtouch4/bridge.c"]
   },
   "assets": ".pocket/ipodtouch4/assets",
-  "icon": "crates/openstrike-vita/static/sce_sys/icon0.png"
+  "icon": "vendor/pocketjs/engine/pocket3d/icon/ios/Icon@2x.png"
 }

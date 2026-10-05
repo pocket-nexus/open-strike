@@ -48,7 +48,8 @@ bench = []
 title_id = "OPSK00001"
 title_name = "OpenStrike"
 # scripts/vita.ts passes static/ to PocketJS's shared final packer, which
-# overlays the branded icon and cooked maps on the complete default LiveArea.
+# overlays the cooked maps on the complete default LiveArea and sets the
+# Pocket3D app icon from the PocketJS checkout as sce_sys/icon0.png.
 build_std = "std,panic_abort"
 vita_make_fself_flags = ["-s"]
 vita_mksfoex_flags = ["-d", "ATTRIBUTE2=12"]

@@ -20,6 +20,7 @@ import {
 } from "node:fs";
 import { compilePocketTarget, nativePocketContract } from "./pocket-contract.ts";
 import { packageVitaVpk } from "../vendor/pocketjs/tools/vita-package.ts";
+import { POCKET3D_ICON } from "../vendor/pocketjs/tools/pocket3d-icon.ts";
 import { prepareVitaUsb } from "../vendor/pocketjs/tools/vita-usb.ts";
 import { cookMap } from "./cook-map.ts";
 
@@ -97,7 +98,8 @@ for (const file of bsps) {
 
 // Recreate the application overlay's map subtree so a removed source map
 // cannot survive in a later VPK. PocketJS's shared final packer merges this
-// VPK-relative `static` tree over the framework LiveArea defaults.
+// VPK-relative `static` tree over the framework LiveArea defaults. The tree
+// holds the cooked maps and no icon.
 const stagedMaps = `${vitaDir}static/maps`;
 rmSync(stagedMaps, { recursive: true, force: true });
 mkdirSync(stagedMaps, { recursive: true });
@@ -164,12 +166,15 @@ if (![artifact, sfo, eboot].every(existsSync)) {
 if (usbDebug)
   await $`${vitaSdk}/bin/vita-make-fself ${targetDirectory}/openstrike-vita.velf ${eboot}`;
 
+// The bubble icon is the Pocket3D app icon from the PocketJS checkout. `icon`
+// replaces sce_sys/icon0.png whatever the `static` tree holds.
 await packageVitaVpk({
   tool: `${vitaSdk}/bin/vita-pack-vpk`,
   sfo,
   eboot,
   output: artifact,
   applicationAssets: `${vitaDir}static`,
+  icon: POCKET3D_ICON.vita,
   usbDriver: usb?.driver,
 });
 
