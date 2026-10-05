@@ -56,6 +56,9 @@ unsafe fn recover(
 }
 
 pub unsafe fn run() {
+    // The Pocket3D title card plays first at every launch: 144 vertical
+    // blanks in its own frame buffer, released before GXM starts.
+    pocket3d_title::vita::play();
     if let Err(error) = graphics::init_with_pool(8 * 1024 * 1024) {
         vita_log(format_args!("OpenStrike graphics: {error}"));
         return;

@@ -2,9 +2,11 @@
 APP := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 include Makefile
 P3D := $(APP)/../../vendor/pocketjs/engine/pocket3d/backends/citro3d
+# pocket3d_title.h: the title card host.patch plays after gfxInitDefault.
+TITLE := $(APP)/../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-title/include
 EXTRA := $(BUILD)/strike_bridge.o $(BUILD)/strike_gpu.o $(BUILD)/pocket3d.o $(BUILD)/textured.o $(BUILD)/color_shbin.o $(BUILD)/textured_shbin.o $(BUILD)/character_shbin.o $(BUILD)/character.o
 OBJECTS += $(EXTRA)
-CFLAGS += -I$(P3D) -I$(APP)
+CFLAGS += -I$(P3D) -I$(TITLE) -I$(APP)
 
 $(BUILD)/strike_bridge.o: $(APP)/bridge.c $(FLAGS_STAMP)
 	$(CC) $(CFLAGS) -c $< -o $@

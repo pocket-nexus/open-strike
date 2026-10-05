@@ -32,6 +32,8 @@ vitasdk-sys = { version = "0.3.3", features = [
 vita2d-sys = "0.1.1"
 pocket3d-vita = { path = "../../domain/crates/pocket3d-vita" }
 pocketjs-vita = { path = "../../vendor/pocketjs/hosts/vita", default-features = false }
+# The Pocket3D title card, played before GXM starts (src/wired.rs).
+pocket3d-title = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-title" }
 libquickjs-sys = { git = "https://github.com/pocket-nexus/quickjs-rs.git", rev = "ba5bdd0dc013518768e76cd9e05cd30ed53dd35b" }
 
 [features]

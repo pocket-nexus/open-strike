@@ -1,6 +1,14 @@
 --- a/src/main.c
 +++ b/src/main.c
-@@ -29,6 +29,7 @@
+@@ -22,6 +22,7 @@
+ 
+ #include <3ds.h>
+ #include <citro3d.h>
++#include <pocket3d_title.h>
+ #include <stdbool.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -29,6 +30,7 @@
  #include <sys/stat.h>
  
  #include "gfx.h"
@@ -8,10 +16,12 @@
  #include "input.h"
  #include "pocket_core.h"
  #include "qjs.h"
-@@ -697,10 +698,14 @@
+@@ -697,10 +699,16 @@
  
  int main(void) {
    gfxInitDefault();
++  /* The Pocket3D title card, on both screens, before the GPU is set up. */
++  pocket3d_title_play();
 +#ifdef POCKETJS_CAPTURE
 +  mkdir(CAPTURE_DIR, 0777);
 +#endif
@@ -24,7 +34,7 @@
  #ifndef POCKETJS_CAPTURE
    /* Debug UI must never make an otherwise admissible guest unbootable. */
    (void)devmenu_init();
-@@ -946,6 +951,27 @@
+@@ -946,6 +954,27 @@
        continue;
  #endif
      }
@@ -52,7 +62,7 @@
      /* Animations always advance at the fixed 1/60 timestep; this host
       * presents at the same rate, so it is one tick per frame. */
      u64 phase_tick __attribute__((unused)) = svcGetSystemTick();
-@@ -961,22 +987,7 @@
+@@ -961,22 +990,7 @@
      }
  #endif
  
@@ -76,7 +86,7 @@
      gfx_begin_frame();
  #ifdef POCKETJS_MEDIA
      media_present();
-@@ -1012,13 +1023,22 @@
+@@ -1012,13 +1026,22 @@
      C3D_FrameDrawOn(primary_target);
      /* C3D_FrameDrawOn resets the viewport, so this comes after it. */
      C3D_SetViewport(0, 0, VIEW_H, VIEW_W);
@@ -100,7 +110,7 @@
      offload_measure((unsigned)((offload_ui_ticks + svcGetSystemTick() - offload_cpu_start) * 1000000 / SYSCLOCK_ARM11));
  #if !defined(POCKETJS_CAPTURE) && !defined(POCKETJS_OFFLOAD)
      {
-@@ -1030,7 +1050,7 @@
+@@ -1030,7 +1053,7 @@
        u64 phase_end = svcGetSystemTick();
        if (previous_frame != UINT32_MAX && run_frame == previous_frame + 1) {
          devserver_set_frame_timing(
@@ -109,7 +119,7 @@
            ticks_to_us(phase_draw - phase_tick),
            ticks_to_us(phase_draw_end - phase_draw),
            ticks_to_us(phase_end - phase_gpu),
-@@ -1104,6 +1124,16 @@
+@@ -1104,6 +1127,16 @@
      }
      frame += 1;
  #endif
