@@ -27,6 +27,8 @@ pocketjs-psp = { path = "../../vendor/pocketjs/hosts/psp" }
 pocketjs-core = { path = "../../vendor/pocketjs/engine/core" }
 pocket3d-bsp = { path = "../../domain/crates/pocket3d-bsp", default-features = false, features = ["libm"] }
 pocket3d-gu = { path = "../../domain/crates/pocket3d-gu" }
+# The Pocket3D title card, drawn into video memory before the GE starts (src/main.rs).
+pocket3d-title = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-title" }
 openstrike-core = { path = "../openstrike-core", default-features = false, features = ["libm"] }
 glam = { version = "0.33", default-features = false, features = ["libm"] }
 libm = "0.2"

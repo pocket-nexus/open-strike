@@ -127,6 +127,7 @@ dependencies = [
  "openstrike-core",
  "openstrike-mods",
  "pocket3d-bsp",
+ "pocket3d-title",
  "pocket3d-vita",
  "pocketjs-vita",
  "serde_json",
@@ -154,6 +155,13 @@ dependencies = [
  "glam",
  "log",
  "pocket-psp-ge",
+]
+
+[[package]]
+name = "pocket3d-title"
+version = "0.1.0"
+dependencies = [
+ "vitasdk-sys",
 ]
 
 [[package]]

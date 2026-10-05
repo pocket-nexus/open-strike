@@ -122,10 +122,37 @@ unsafe fn log_exception(ctx: *mut JSContext) {
     host::log_exception_with(ctx, |_| {});
 }
 
+/// The Pocket3D title card, drawn into video memory before the GE is set up.
+unsafe fn title() {
+    // The uncached mirror of video memory: what is written is what the display reads.
+    let vram = (sys::sceGeEdramGetAddr() as usize | 0x4000_0000) as *mut u8;
+    sys::sceDisplaySetMode(sys::DisplayMode::Lcd, 480, 272);
+    let mut surface = pocket3d_title::Surface {
+        pixels: core::slice::from_raw_parts_mut(vram, 512 * 272 * 4),
+        width: 480,
+        height: 272,
+        stride: 512,
+        layout: pocket3d_title::Layout::Rgba8,
+    };
+    pocket3d_title::play(&mut surface, |_| {
+        sys::sceDisplaySetFrameBuf(
+            vram,
+            512,
+            sys::DisplayPixelFormat::Psm8888,
+            sys::DisplaySetBufSync::NextFrame,
+        );
+        sys::sceDisplayWaitVblankStart();
+    });
+    // `play` leaves video memory as zero bytes, so the GE's 16-bit display
+    // buffer on the same bytes is black until the first frame is drawn.
+}
+
 unsafe fn run() {
     psp::enable_home_button();
     // Full clocks (PSPLINK sessions inherit 222 MHz; retail 3D games run 333).
     sys::scePowerSetClockFrequency(333, 333, 166);
+    // The Pocket3D title card plays first at every launch.
+    title();
     #[cfg(feature = "framebuffer16")]
     host::init_graphics_with_format(
         host::GfxConfig { depth: true },

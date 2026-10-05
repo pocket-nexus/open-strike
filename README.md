@@ -265,7 +265,8 @@ capture builds use virtual time and cannot establish hardware FPS.
 The build uses the pinned PocketJS host and UI core. `host.patch` applies
 native lifecycle/render hooks to an ignored copy under `.pocket/3ds-dev/`,
 after the preceding GPU frame has retired, and restores UI vertex state
-after native rendering. A patch mismatch fails the build. The vendored
+after native rendering. It also plays the [Pocket3D title card](#pocket3d-title-card)
+after `gfxInitDefault()`. A patch mismatch fails the build. The vendored
 PocketJS checkout stays unmodified.
 
 ## Nokia E7: full 3D OpenStrike
@@ -573,6 +574,32 @@ live in [`domain/`](domain/README.md). PocketJS supplies the pinned host,
 packaging/toolchains and thin native device kernels. The desktop BSP adapter is
 also owned here; PocketJS's generic widget, mesh, animation and VRM code stays
 independent of BSP. Atlas owns its own PlaceIR compiler and scene renderer.
+
+### Pocket3D title card
+
+OpenStrike is built on [Pocket3D](https://3d.pocket.nexus) and shows the
+Pocket3D title card at launch on PS Vita, PSP and Nintendo 3DS: the mark and
+the wordmark for 144 ticks at 60 Hz (2.4 s). The pinned PocketJS puts Pocket3D
+(`pocket3d/`, `devices/` and `engine/pocket3d/`) under the
+[Pocket3D License 1.0](https://github.com/pocket-nexus/pocketjs/blob/main/pocket3d/LICENSE),
+which makes the card a condition of distributing a game that draws with it.
+OpenStrike's own sources stay under the MIT [LICENSE](LICENSE).
+
+The card plays first at every launch, before the renderer starts. The CPU
+draws it into the display frame buffer, so it uses no GXM, GE or citro3d state.
+
+| Console | Call | Site |
+| --- | --- | --- |
+| PS Vita | `pocket3d_title::vita::play()` | `crates/openstrike-vita/src/wired.rs`, before `graphics::init_with_pool` |
+| PSP | `title()` | `crates/openstrike-psp/src/main.rs`, before `host::init_graphics` |
+| Nintendo 3DS | `pocket3d_title_play()` | `crates/openstrike-3ds/host.patch`, after `gfxInitDefault()` and before `C3D_Init` |
+
+The drawers and the art come from
+`vendor/pocketjs/engine/pocket3d/crates/pocket3d-title`. Do not skip, shorten,
+recolour or redraw the card in this repository, and do not draw the mark with
+the game's renderer. No build flag or boot switch skips it: capture and
+benchmark builds play it too. The desktop, iPod touch 4 and Nokia E7 builds and
+the static map viewer have no call yet and do not show the card.
 
 ### Device validation ownership
 
