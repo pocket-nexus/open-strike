@@ -25,6 +25,7 @@ import {
   VITA_REQUIRED_SYSTEM_ASSETS,
   VITA_SYSTEM_ASSET_PATHS,
 } from "../vendor/pocketjs/tools/vita-package.ts";
+import { POCKET3D_ICON } from "../vendor/pocketjs/tools/pocket3d-icon.ts";
 
 const repo = new URL("..", import.meta.url).pathname;
 const home = process.env.HOME ?? "";
@@ -42,7 +43,8 @@ const configFile = `${configDir}/config.yml`;
 const titleId = "OPSK00001";
 const appDir = `${vitaFs}/ux0/app/${titleId}`;
 const capDir = `${vitaFs}/ux0/data/openstrike-vita/cap`;
-const packageIcon = `${repo}crates/openstrike-vita/static/sce_sys/icon0.png`;
+// scripts/vita.ts packages the Pocket3D app icon from the PocketJS checkout.
+const packageIcon = POCKET3D_ICON.vita;
 const baseConfigCandidates = [
   process.env.VITA3K_CONFIG,
   `${home}/Library/Application Support/Vita3K/Vita3K/config.yml`,

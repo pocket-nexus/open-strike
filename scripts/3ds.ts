@@ -26,7 +26,7 @@ import {
   extractHostBuildInputs,
   hostBuildEnvironment,
 } from "@pocketjs/framework/manifest";
-import { rasterizeIconSvg } from "../vendor/pocketjs/tools/icon-raster.ts";
+import { POCKET3D_ICON } from "../vendor/pocketjs/tools/pocket3d-icon.ts";
 
 const root = resolve(import.meta.dir, "..");
 const framework = resolve(root, "vendor/pocketjs");
@@ -43,17 +43,6 @@ export const MAP_NAMES = [
   "wwdc24-parkour",
 ] as const;
 type Manifest = { app: Record<string, unknown>; [key: string]: unknown };
-
-export async function render3dsIcons() {
-  const svg = readFileSync(resolve(crate, "icon.svg"), "utf8");
-  return Promise.all(
-    [48, 24].map(async (size) => ({
-      size,
-      canvas: await rasterizeIconSvg(svg, size),
-      name: size === 48 ? "icon.png" : "icon-small.png",
-    })),
-  );
-}
 
 export function threeDsManifest(source: Manifest) {
   const engine = source.engine as { capabilities: { requires: string[]; enhances: string[] } };
@@ -186,10 +175,8 @@ export async function build(argv = process.argv.slice(2)) {
     ? captureDefines(process.env)
     : { input: "", touch: "", start: "", count: "" };
   const output = resolve(out, "openstrike.3dsx");
-  // Generate both SMDH sizes from the canonical SVG on every native build.
-  // A stale PNG previously shipped only the dark background in Homebrew Launcher.
-  for (const icon of await render3dsIcons())
-    writeFileSync(resolve(generated, icon.name), icon.canvas.toBuffer("image/png"));
+  // The SMDH takes both sizes of the Pocket3D app icon from the PocketJS
+  // checkout. Given the large one alone, smdhtool halves it for the small slot.
   await runContainer(
     `make -f /app/crates/openstrike-3ds/Makefile -j${availableParallelism()}`,
     mounts,
@@ -214,8 +201,8 @@ export async function build(argv = process.argv.slice(2)) {
       POCKETJS_SMDH_TITLE: plan.app.title,
       POCKETJS_SMDH_AUTHOR: plan.app.id,
       POCKETJS_SMDH_DESC: "OpenStrike tactical FPS",
-      ICON: containerPath(resolve(generated, "icon.png")),
-      SMALL_ICON: containerPath(resolve(generated, "icon-small.png")),
+      ICON: containerPath(POCKET3D_ICON.n3ds),
+      SMALL_ICON: containerPath(POCKET3D_ICON.n3dsSmall),
       POCKETJS_CAPTURE: capture ? "1" : "",
       POCKETJS_CAPTURE_INPUT: tape.input,
       POCKETJS_CAPTURE_TOUCH: tape.touch,

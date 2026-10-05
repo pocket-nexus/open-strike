@@ -12,7 +12,7 @@
     "build:vita": "bun scripts/vita.ts",
     "test:symbian-bundle": "bun scripts/symbian.ts --guest-only",
     "test:symbian": "bun test test/symbian-tooling.test.ts",
-    "test:vita-package": "bun test test/openstrike-vita-artwork.test.ts",
+    "test:icon": "bun test test/pocket3d-icon.test.ts",
     "test:e2e:vita": "bun scripts/e2e-vita.ts",
     "test:psp-toolchain": "bun test test/psp-toolchain.test.ts",
     "build:3ds": "bun scripts/3ds.ts",

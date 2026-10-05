@@ -29,9 +29,11 @@ compiles the product JS/pak from its resolved plan, verifies the plan checksum,
 and projects stable target, host ABI and viewport inputs for the Pocket host.
 It then cooks supplied BSPs, or validates `OPENSTRIKE_COOKED_MAPS`, and invokes
 the pinned Rust toolchain. `--mod manifest.json` adds a validated local pack.
-PocketJS's shared final packer overlays the staged `.p3d` catalogue and
-committed OpenStrike icon on the framework's complete black LiveArea asset set;
-Cargo metadata does not maintain a second packaging path. Map and WAD data is
+PocketJS's shared final packer overlays the staged `.p3d` catalogue on the
+framework's complete black LiveArea asset set and takes the bubble icon from
+`vendor/pocketjs/engine/pocket3d/icon/vita/icon0.png`, the Pocket3D app icon;
+this repository holds no icon file. Cargo metadata does not maintain a second
+packaging path. Map and WAD data is
 not committed or redistributed. The custom host requires PocketJS Vita Host
 ABI 2 at build time and keeps the stable Vita title id `OPSK00001`, so
 installing another PocketJS demo does not replace OpenStrike or its LiveArea

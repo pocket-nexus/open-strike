@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { prepareHost, render3dsIcons, threeDsManifest } from "../scripts/3ds.ts";
+import { prepareHost, threeDsManifest } from "../scripts/3ds.ts";
 import { resolve3dsBuildPlan } from "../vendor/pocketjs/tools/3ds-profile.ts";
 import {
   validateAndResolveBuildPlan,
@@ -10,22 +10,6 @@ const source = JSON.parse(
   readFileSync(new URL("../pocket.json", import.meta.url), "utf8"),
 );
 describe("OpenStrike display capability contract", () => {
-  test("both launcher icon sizes retain the white and green mark on opaque pixels", async () => {
-    for (const { size, canvas } of await render3dsIcons()) {
-      expect(canvas.width).toBe(size);
-      expect(canvas.height).toBe(size);
-      const pixels = canvas.getContext("2d").getImageData(0, 0, size, size).data;
-      let white = 0;
-      let green = 0;
-      for (let i = 0; i < pixels.length; i += 4) {
-        expect(pixels[i + 3]).toBe(255);
-        if (pixels[i] > 210 && pixels[i + 1] > 210 && pixels[i + 2] > 210) white++;
-        if (pixels[i] > 140 && pixels[i + 1] > 200 && pixels[i + 2] < 120) green++;
-      }
-      expect(white).toBeGreaterThan(size * size * 0.03);
-      expect(green).toBeGreaterThan(size * size * 0.03);
-    }
-  });
   test("the pinned upstream host accepts the native lifecycle patch", async () => {
     // This checks all patch context against the actual pinned source. An
     // upstream update cannot silently leave a partially integrated host.

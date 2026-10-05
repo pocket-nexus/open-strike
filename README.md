@@ -420,8 +420,8 @@ OpenStrike runs on an actual Sony PSP — same simulation, same JS rules, same
 JSX HUD, rendered by the sceGu backend (`pocket3d-gu`). Not a stripped-down
 demo: the same game sources compile into target-specific UI bundles for
 desktop and PSP, each checked against its native host contract. It ships as a proper EBOOT —
-branded XMB icon and backdrop, a main menu that lists every cooked map, and
-SELECT to return there mid-round.
+the [Pocket3D app icon](#pocket3d-app-icon) and OpenStrike's backdrop on the XMB,
+a main menu that lists every cooked map, and SELECT to return there mid-round.
 
 <p align="center">
   <img src="docs/psp-menu.png" width="400" alt="OpenStrike PSP main menu — a two-column map list (all eight CS classics) under the wordmark" />
@@ -440,8 +440,8 @@ bun scripts/e2e-psp.ts               # deterministic PPSSPP goldens (spawn/walk/
 ```
 
 Install: copy `dist/PSP/` to a Memory Stick root (or the emulator's memstick
-dir) on a homebrew-enabled PSP; OpenStrike appears in the Game menu with its
-icon. The build needs the PSP toolchain from the PocketJS ecosystem
+dir) on a homebrew-enabled PSP; OpenStrike appears in the Game menu beside the
+Pocket3D app icon. The build needs the PSP toolchain from the PocketJS ecosystem
 (`pocket doctor`) plus the CS maps (`OPENSTRIKE_MAPS`).
 
 Controls: analog stick moves, `△/✕/□/○` looks, `R` fires, `L` jumps, d-pad
@@ -527,11 +527,11 @@ the SELF through PocketJS's A/B slots and retains the installed recovery
 `eboot.bin`. `--no-usb-debug` builds without the driver. Local mod packs
 share character animation, staff/ball weapons and feathered effects with
 PSP and 3DS. PocketJS's shared Vita
-packager combines OpenStrike's branded 128×128 icon and cooked maps with the
-framework's black 840×500 background, 280×158 startup image, and LiveArea
-template. The Vita3K golden driver uses an isolated VitaFS, scripted dual-stick
-input, a guest completion marker, byte-exact 960×544 HUD captures, and native
-Pocket3D scene-stat assertions.
+packager combines the 128×128 [Pocket3D app icon](#pocket3d-app-icon) and
+OpenStrike's cooked maps with the framework's black 840×500 background,
+280×158 startup image, and LiveArea template. The Vita3K golden driver uses
+an isolated VitaFS, scripted dual-stick input, a guest completion marker,
+byte-exact 960×544 HUD captures, and native Pocket3D scene-stat assertions.
 See [`crates/openstrike-vita/README.md`](crates/openstrike-vita/README.md) for
 the pinned toolchain, controls and emulator-capture details.
 
@@ -600,6 +600,32 @@ recolour or redraw the card in this repository, and do not draw the mark with
 the game's renderer. No build flag or boot switch skips it: capture and
 benchmark builds play it too. The desktop, iPod touch 4 and Nokia E7 builds and
 the static map viewer have no call yet and do not show the card.
+
+### Pocket3D app icon
+
+The app icon in each console's launcher is the Pocket3D app icon: the Pocket3D
+mark on the title card's ground, `#171226`. Each build reads the file for its
+console from the pinned PocketJS checkout, under
+`vendor/pocketjs/engine/pocket3d/icon/`. **This repository holds no icon
+file**, so a new drawing reaches OpenStrike with the PocketJS pin. The
+launcher's title string, `OpenStrike`, names the game.
+
+| Console | File under `vendor/pocketjs/engine/pocket3d/icon/` | Wiring |
+| --- | --- | --- |
+| PSP | `psp/ICON0.PNG` (144×80) | `xmb_icon_png` in `crates/openstrike-psp/Psp.toml` |
+| PS Vita | `vita/icon0.png` (128×128, 8-bit indexed) | `icon: POCKET3D_ICON.vita`, given to `packageVitaVpk` in `scripts/vita.ts` |
+| Nintendo 3DS | `3ds/icon.png` (48×48) and `3ds/icon-small.png` (24×24) | `ICON` and `SMALL_ICON` in `scripts/3ds.ts`, which `smdhtool` reads into the SMDH |
+| iPod touch 4 | `ios/Icon@2x.png` (114×114) | `icon` in `hosts/ipodtouch4/ipodtouch4.json`; PocketJS's packager writes the bundle's 114- and 57-pixel icons from it, and its `Info.plist` sets `UIPrerenderedIcon` |
+
+Do not add an `ICON0.png`, an `icon0.png`, a 3DS `icon*.png` or a bundle
+`Icon*.png` to this repository, and do not redraw, recolour or crop the icon.
+`test/pocket3d-icon.test.ts` fails when Git tracks an icon file here or when a
+build stops reading the PocketJS files. The procedure, including a new console
+target, is `vendor/pocketjs/skills/pocket3d-brand/SKILL.md`.
+
+The PSP's XMB backdrop, `crates/openstrike-psp/assets/PIC1.png`, is
+OpenStrike's own picture; `scripts/gen-cover.ts` builds it. The desktop and
+Nokia E7 builds do not take the Pocket3D app icon.
 
 ### Device validation ownership
 
