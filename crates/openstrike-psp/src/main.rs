@@ -143,10 +143,8 @@ unsafe fn title() {
         );
         sys::sceDisplayWaitVblankStart();
     });
-    // The card ends on black with the fourth byte of each pixel at 255. The
-    // GE's 16-bit display buffer occupies the same bytes and is shown before
-    // the first frame is drawn, so video memory is handed over as zeroes.
-    surface.pixels.fill(0);
+    // `play` leaves video memory as zero bytes, so the GE's 16-bit display
+    // buffer on the same bytes is black until the first frame is drawn.
 }
 
 unsafe fn run() {
