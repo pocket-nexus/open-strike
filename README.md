@@ -23,9 +23,11 @@ A CS-like FPS with offline bots and [Mac–PSP Companion crossplay](docs/CROSSPL
 core (Pocket3D) simulates and renders; the *product* — round rules, weapon
 tables, difficulty, and the entire HUD — is JavaScript running in an embedded
 QuickJS guest. OpenStrike is the first specialized game runtime of
-[PocketJS](https://github.com/pocket-stack/pocketjs); the architecture it
+[PocketJS](https://github.com/pocket-nexus/pocketjs); the architecture it
 instantiates is documented in the engine repo's
-[RUNTIMES.md](https://github.com/pocket-stack/pocketjs/blob/main/RUNTIMES.md).
+[RUNTIMES.md](https://github.com/pocket-nexus/pocketjs/blob/main/docs/RUNTIMES.md).
+
+OpenStrike is one of the two mods on [Pocket Studio](https://studio.pocket.nexus/#games). The engines behind Pocket Studio also run mods. This one reads its maps from a game you own, so Pocket Studio shows it as a demo. The code is here: take it and make it yours.
 
 ```
 crates/openstrike-core   the simulation — portable Rust shared VERBATIM by all
@@ -64,7 +66,7 @@ game grants itself no privileges a mod wouldn't have.
 ## Building
 
 ```sh
-git clone --recursive https://github.com/pocket-stack/open-strike
+git clone --recursive https://github.com/pocket-nexus/open-strike
 cd open-strike
 bun run setup      # installs the vendored framework deps + solid-js link
 bun run bootstrap  # install the pinned PSP toolchain into the shared cache
@@ -101,8 +103,8 @@ PSP builds resolve the normalized SDK in a fixed order: `PSP_SDK`, then
 (or the same path under `~/.cache`). Both SDK environment variables are then
 exported to the build, so Rust and QuickJS cannot silently select different
 toolchains. The vendored PocketJS manifest pins the organization-owned
-`pocket-stack/pspdev`, `pocket-stack/rust-psp`, and
-`pocket-stack/quickjs-rs` revisions used by every PSP build; no DreamCart or
+`pocket-nexus/pspdev`, `pocket-nexus/rust-psp`, and
+`pocket-nexus/quickjs-rs` revisions used by every PSP build; no DreamCart or
 personal-fork checkout is required.
 
 [`pocket.json`](pocket.json) is the portable Pocket application contract. It
@@ -432,7 +434,7 @@ a main menu that lists every cooked map, and SELECT to return there mid-round.
 deterministic backend the byte-exact e2e goldens run on.</em></p>
 
 ```sh
-git submodule update --init          # pocket-stack/pocketjs + rust-psp + quickjs-rs
+git submodule update --init          # pocket-nexus/pocketjs + rust-psp + quickjs-rs
 bun scripts/psp.ts                   # resolve PSP plan → bundle → maps → EBOOT
 bun scripts/psp.ts --package         # + assemble dist/PSP/GAME/OpenStrike (ms0 layout)
 bun scripts/hw.ts --bench            # launch over PSPLINK; frame times stream back
