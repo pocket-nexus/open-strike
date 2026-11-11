@@ -367,6 +367,11 @@ tested set. `OPENSTRIKE_MAPS` can replace `--maps-dir` below.
 cargo run --release -p openstrike -- --maps-dir ~/path/to/cs-maps
 ```
 
+The desktop also reads the cooked `.p3d` maps the handhelds use, with their
+textures, collision hulls and spawn points: with `dist/maps/de_dust2.p3d`
+present no map argument is needed, and `--map /path/to/map.p3d` chooses
+another cooked map (no BSP or WAD files required).
+
 | Input | Action |
 | --- | --- |
 | Mouse | look |

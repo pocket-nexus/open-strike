@@ -1,10 +1,11 @@
 //! OpenStrike — a single-player CS-like FPS on the Pocket runtime family:
 //! a Pocket3D core, gameplay rules as QuickJS mods, and a Solid JSX HUD.
 
-mod bsp_world;
 mod args;
 mod bot;
+mod bsp_world;
 mod character_preview;
+mod cooked_map;
 mod game;
 mod guest;
 mod scripts;
@@ -32,7 +33,14 @@ fn main() -> Result<()> {
 
     let map_path = args.resolve_map_path()?;
     log::info!("loading {}", map_path.display());
-    let map = pocket3d_bsp::load_map(&map_path, &args.wad_dirs())?;
+    let cooked_map = map_path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("p3d"));
+    let map = if cooked_map {
+        cooked_map::load(&map_path)?
+    } else {
+        pocket3d_bsp::load_map(&map_path, &args.wad_dirs())?
+    };
 
     // Spawn selection.
     let spawn = if args.spawn_t {
@@ -46,8 +54,12 @@ fn main() -> Result<()> {
     .context("map has no player spawns")?;
     let mut game = OpenStrike::new(map, spawn.pos, spawn.yaw, args.bots);
     if std::env::var_os("OPENSTRIKE_COMPANION_CONFIG").is_some() {
-        let (cooked, _) =
-            pocket3d_bsp::cook::cook_map(&map_path, &args.wad_dirs(), &Default::default())?;
+        // The map's identity is its cooked bytes: a cooked map is read as it is.
+        let cooked = if cooked_map {
+            std::fs::read(&map_path)?
+        } else {
+            pocket3d_bsp::cook::cook_map(&map_path, &args.wad_dirs(), &Default::default())?.0
+        };
         let identity = openstrike_core::net::map_key(&cooked).map_err(anyhow::Error::msg)?;
         game.sim.bots.clear();
         game.sim.network = Some(openstrike_core::net::Client::new(identity));
