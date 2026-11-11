@@ -46,6 +46,13 @@ crates/openstrike-symbian
                          GLES2, statically linked into PocketJS's Qt host
 crates/openstrike-3ds    the 3DS build: native 400×240 world/HUD plus a
                          320×240 tactical map and touch controls
+crates/openstrike-game   the modern game, for hosts with a GPU to spare: team
+                         deathmatch and elimination with bots on both sides,
+                         five weapons with sights and recoil, grenades, sprint
+                         / crouch / slide / mantle, bodies posed by IK with
+                         ragdolls (see its README; the consoles keep the core)
+crates/openstrike-audio  its sound: effects synthesized at startup, a spatial
+                         mixer, ALSA / AudioQueue / AAudio opened at run time
 
 game/                    the product bundle (JS/TSX) — runs on every target
   ├─ sdk.ts              `strike` SDK: state snapshots, events, commands

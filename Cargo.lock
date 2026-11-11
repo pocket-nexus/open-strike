@@ -1469,6 +1469,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "openstrike-audio"
+version = "0.1.0"
+dependencies = [
+ "libloading",
+]
+
+[[package]]
 name = "openstrike-character"
 version = "0.1.0"
 dependencies = [
@@ -1495,6 +1502,17 @@ dependencies = [
  "libm",
  "pocket3d-bsp",
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "openstrike-game"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "glam",
+ "gltf",
+ "pocket3d-bsp",
  "serde_json",
 ]
 
