@@ -6,11 +6,11 @@
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
+use pocket3d_bsp::MapData;
 use pocket3d::input::Input;
 use pocket3d::prelude::*;
 use pocket3d::winit::event::MouseButton;
 use pocket3d::winit::keyboard::KeyCode;
-use pocket3d_bsp::MapData;
 
 use openstrike_core::StrikeSim;
 pub use openstrike_core::sim::{Command, GameEvent, Phase, SimInput};
