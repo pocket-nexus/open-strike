@@ -1,0 +1,41 @@
+name: Modern game and its sound
+
+on:
+  pull_request:
+    paths:
+      - "crates/openstrike-game/**"
+      - "crates/openstrike-audio/**"
+      - "domain/crates/pocket3d-bsp/**"
+      - "assets/models/Soldier.glb"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/modern-game.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/openstrike-game/**"
+      - "crates/openstrike-audio/**"
+      - "domain/crates/pocket3d-bsp/**"
+      - "assets/models/Soldier.glb"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/modern-game.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  rules:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # (The map tests pass vacuously here: the maps are not in the repository. The weapons, the hit zones, the
+      # grenades, the sound bank and the mixer are checked.)
+      - run: cargo test --locked -p openstrike-game -p openstrike-audio
+      - run: cargo build --locked -p openstrike-game --examples

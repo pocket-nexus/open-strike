@@ -1,0 +1,16 @@
+# openstrike-audio: the modern game's sound. Every effect is synthesized at startup (no sample files), mixed spatially
+# in real time, and played through the platform's own output opened at run time, so nothing is linked at build time:
+# ALSA (libasound.so.2) and AAudio (libaaudio.so) through libloading, AudioToolbox's AudioQueue on macOS and iOS.
+
+[package]
+name = "openstrike-audio"
+description = "OpenStrike's sound: synthesized effects, a spatial mixer, and the platforms' audio outputs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
+libloading = "0.8"
