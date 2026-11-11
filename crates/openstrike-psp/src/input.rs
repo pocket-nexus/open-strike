@@ -15,6 +15,7 @@ pub struct PadInput {
     look_hold: f32,
 }
 
+#[derive(Default)]
 pub struct TickInput {
     pub sim: SimInput,
     /// Deltas for `StrikeSim::apply_look` (mouse-unit compatible).

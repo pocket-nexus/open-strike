@@ -49,10 +49,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "grid"
-version = "1.0.1"
+name = "itoa"
+version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b40ca9252762c466af32d0b1002e91e4e1bc5398f77455e55474deb466355ff5"
+checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "libc"
@@ -69,7 +69,7 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 [[package]]
 name = "libquickjs-sys"
 version = "0.9.0"
-source = "git+https://github.com/pocket-stack/quickjs-rs.git?rev=ba5bdd0dc013518768e76cd9e05cd30ed53dd35b#ba5bdd0dc013518768e76cd9e05cd30ed53dd35b"
+source = "git+https://github.com/pocket-nexus/quickjs-rs.git?rev=ba5bdd0dc013518768e76cd9e05cd30ed53dd35b#ba5bdd0dc013518768e76cd9e05cd30ed53dd35b"
 dependencies = [
  "cc",
  "copy_dir",
@@ -81,6 +81,12 @@ name = "log"
 version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
+
+[[package]]
+name = "memchr"
+version = "2.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "openstrike-character"
@@ -97,6 +103,18 @@ dependencies = [
  "glam",
  "libm",
  "pocket3d-bsp",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "openstrike-mods"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "openstrike-character",
+ "openstrike-core",
+ "serde_json",
 ]
 
 [[package]]
@@ -107,9 +125,24 @@ dependencies = [
  "libquickjs-sys",
  "openstrike-character",
  "openstrike-core",
+ "openstrike-mods",
  "pocket3d-bsp",
+ "pocket3d-title",
  "pocket3d-vita",
  "pocketjs-vita",
+ "serde_json",
+ "vita2d-sys",
+ "vitasdk-sys",
+]
+
+[[package]]
+name = "pocket-psp-ge"
+version = "0.1.0"
+
+[[package]]
+name = "pocket-vita-gxm"
+version = "0.1.0"
+dependencies = [
  "vita2d-sys",
  "vitasdk-sys",
 ]
@@ -121,6 +154,14 @@ dependencies = [
  "anyhow",
  "glam",
  "log",
+ "pocket-psp-ge",
+]
+
+[[package]]
+name = "pocket3d-title"
+version = "0.1.0"
+dependencies = [
+ "vitasdk-sys",
 ]
 
 [[package]]
@@ -129,6 +170,7 @@ version = "0.1.0"
 dependencies = [
  "glam",
  "libm",
+ "pocket-vita-gxm",
  "pocket3d-bsp",
  "vita2d-sys",
  "vitasdk-sys",
@@ -147,6 +189,8 @@ version = "0.1.0"
 dependencies = [
  "libquickjs-sys",
  "pocketjs-core",
+ "serde",
+ "serde_json",
  "vita2d-sys",
  "vitasdk-sys",
 ]
@@ -209,6 +253,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_json"
+version = "1.0.151"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
+dependencies = [
+ "itoa",
+ "memchr",
+ "serde",
+ "serde_core",
+ "zmij",
+]
+
+[[package]]
 name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -241,7 +298,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfde4e2f8595f222ceaae1fb16b4963952e9b33e358869dc4cd6316b0e0790cd"
 dependencies = [
  "arrayvec",
- "grid",
  "serde",
  "slotmap",
 ]
@@ -303,3 +359,9 @@ checksum = "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
 dependencies = [
  "windows-link",
 ]
+
+[[package]]
+name = "zmij"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"

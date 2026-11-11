@@ -1,19 +1,20 @@
-// Generate the EBOOT cover art from the desktop hero shot:
-//   crates/openstrike-psp/assets/ICON0.png  (144x80, XMB icon)
-//   crates/openstrike-psp/assets/PIC1.png   (480x272, XMB backdrop)
-//   crates/openstrike-vita/static/sce_sys/icon0.png (128x128, LiveArea icon)
+// Generate the PSP's XMB backdrop from the desktop hero shot:
+//   crates/openstrike-psp/assets/PIC1.png   (480x272, behind the game's listing)
 //
 //   bun scripts/gen-cover.ts
 //
 // Requires ImageMagick (`magick`) and the macOS system fonts. Re-run only
-// when the branding or source shot changes — the outputs are committed.
+// when the branding or source shot changes — the output is committed.
+//
+// This script draws no icon. The app icon on every console is the Pocket3D
+// icon in vendor/pocketjs/engine/pocket3d/icon/, which each build reads from
+// that checkout (README.md, "Pocket3D app icon").
 
 import { existsSync, mkdirSync } from "node:fs";
 
 const repo = new URL("..", import.meta.url).pathname;
 const hero = `${repo}docs/hero.jpg`;
 const out = `${repo}crates/openstrike-psp/assets`;
-const vitaOut = `${repo}crates/openstrike-vita/static/sce_sys`;
 const IMPACT = "/System/Library/Fonts/Supplemental/Impact.ttf";
 const HELV = "/System/Library/Fonts/HelveticaNeue.ttc";
 
@@ -23,7 +24,6 @@ if (!existsSync(hero)) {
 }
 
 mkdirSync(out, { recursive: true });
-mkdirSync(vitaOut, { recursive: true });
 
 async function magick(args: string[]): Promise<void> {
   const child = Bun.spawn(["magick", ...args], { stdout: "inherit", stderr: "inherit" });
@@ -49,30 +49,4 @@ await magick([
   `${out}/PIC1.png`,
 ]);
 
-// ICON0 — compact game icon: right-weighted crate/gun, dark scrim, wordmark.
-await magick([
-  hero,
-  "-resize", "288x160^", "-gravity", "East", "-extent", "288x160", "-modulate", "82,92",
-  "(", "-size", "288x160", "gradient:rgba(5,8,12,0.9)-rgba(5,8,12,0.15)", ")",
-  "-compose", "over", "-composite", "-font", IMPACT, "-gravity", "West",
-  "-fill", "#b8f34a", "-pointsize", "40", "-annotate", "+12-13", "OPEN",
-  "-fill", "#e8f0f2", "-pointsize", "40", "-annotate", "+12+22", "STRIKE",
-  "-resize", "144x80", `${out}/ICON0.png`,
-]);
-
-// Vita icon — square crop with the same wordmark, encoded as the indexed,
-// non-interlaced PNG-8 expected by LiveArea.
-await magick([
-  hero,
-  "-resize", "256x256^", "-gravity", "center", "-extent", "256x256", "-modulate", "82,92",
-  "(", "-size", "256x256", "gradient:rgba(5,8,12,0.92)-rgba(5,8,12,0.12)", "-rotate", "90", ")",
-  "-compose", "over", "-composite", "-font", IMPACT, "-gravity", "NorthWest",
-  "-fill", "#b8f34a", "-pointsize", "54", "-annotate", "+16+22", "OPEN",
-  "-fill", "#e8f0f2", "-pointsize", "54", "-annotate", "+16+72", "STRIKE",
-  "-resize", "128x128", "-colors", "256", "-strip", "-interlace", "none",
-  `PNG8:${vitaOut}/icon0.png`,
-]);
-
-console.log(
-  `wrote ${out}/ICON0.png (144x80) + ${out}/PIC1.png (480x272) + ${vitaOut}/icon0.png (128x128 PNG-8)`,
-);
+console.log(`wrote ${out}/PIC1.png (480x272)`);

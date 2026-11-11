@@ -39,11 +39,25 @@ fn main() {
     });
     fs::write(out.join("app.pak"), pak).unwrap();
 
+    println!("cargo:rerun-if-env-changed=OPENSTRIKE_MAP_TOUR");
+    let tour = env::var("OPENSTRIKE_MAP_TOUR").unwrap_or_default();
+    let content = if tour.is_empty() {
+        if env::var_os("CARGO_FEATURE_MAP_BENCH").is_some() {
+            panic!("map-bench requires --tour file.txt");
+        }
+        String::new()
+    } else {
+        println!("cargo:rerun-if-changed={tour}");
+        fs::read_to_string(tour).expect("read map tour")
+    };
+    fs::write(out.join("map-tour.txt"), content).unwrap();
     for var in [
         "OPENSTRIKE_PSP_CAPTURE_INPUT",
         "OPENSTRIKE_PSP_CAP_START",
         "OPENSTRIKE_PSP_CAP_N",
         "OPENSTRIKE_PSP_AUTOSTART",
+        "OPENSTRIKE_PSP_CHARACTER_START",
+        "OPENSTRIKE_PSP_PROBE_DISTANCE",
     ] {
         println!("cargo:rerun-if-env-changed={var}");
         let v = env::var(var).unwrap_or_default();

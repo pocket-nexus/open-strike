@@ -1,13 +1,16 @@
 [workspace]
 resolver = "2"
-members = ["crates/openstrike", "crates/openstrike-core", "crates/openstrike-character"]
+members = ["crates/openstrike", "crates/openstrike-core", "crates/openstrike-character", "crates/openstrike-mods", "crates/openstrike-companion"]
 # The vendored engine keeps its own workspaces (Cargo would otherwise try to
 # adopt the path-dependency crates into this one and break their inheritance).
 exclude = [
     "vendor",
+    "domain",
     "crates/openstrike-psp",
     "crates/openstrike-vita",
     "crates/openstrike-symbian",
+    "crates/openstrike-3ds",
+    "crates/openstrike-ipod",
 ]
 
 [workspace.package]
@@ -20,10 +23,10 @@ repository = "https://github.com/pocket-stack/open-strike"
 # The engine family is vendored as a git submodule (vendor/pocketjs) so the
 # Rust crates and the JS framework/build pipeline stay pinned to ONE commit.
 pocket3d = { path = "vendor/pocketjs/engine/pocket3d/crates/pocket3d" }
-pocket3d-bsp = { path = "vendor/pocketjs/engine/pocket3d/crates/pocket3d-bsp" }
+pocket3d-bsp = { path = "domain/crates/pocket3d-bsp" }
 pocket-mod = { path = "vendor/pocketjs/engine/crates/pocket-mod" }
 pocket-ui-wgpu = { path = "vendor/pocketjs/engine/crates/pocket-ui-wgpu" }
-pocketjs-core = { path = "vendor/pocketjs/engine/core", features = ["std"] }
+pocketjs-core = { path = "vendor/pocketjs/engine/core" }
 
 wgpu = "25"
 glam = "0.33"

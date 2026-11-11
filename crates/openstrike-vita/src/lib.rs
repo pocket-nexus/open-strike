@@ -6,11 +6,8 @@
 
 extern crate alloc;
 
-// The raw strike surface is intentionally source-shared with PSP: both hosts
-// expose the same QuickJS C ABI and button vocabulary. Alias this crate as the
-// import name used by the PSP module, with only its two generic FFI helpers.
-#[cfg(target_os = "vita")]
-extern crate self as pocketjs_psp;
+// The raw strike surface is source-shared across hosts; this crate supplies
+// its QuickJS FFI helpers and explicitly declares its supported resources.
 
 pub mod capture;
 pub mod frame_dump;

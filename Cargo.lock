@@ -783,12 +783,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "grid"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b40ca9252762c466af32d0b1002e91e4e1bc5398f77455e55474deb466355ff5"
-
-[[package]]
 name = "half"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1463,10 +1457,13 @@ dependencies = [
  "glam",
  "log",
  "openstrike-character",
+ "openstrike-companion",
  "openstrike-core",
  "pocket-mod",
+ "pocket-ui-surface",
  "pocket-ui-wgpu",
  "pocket3d",
+ "pocket3d-bsp",
  "pocketjs-core",
  "wgpu",
 ]
@@ -1480,12 +1477,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "openstrike-companion"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "openstrike-core",
+ "pocket3d-bsp",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "openstrike-core"
 version = "0.1.0"
 dependencies = [
  "glam",
  "libm",
  "pocket3d-bsp",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "openstrike-mods"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "openstrike-character",
+ "openstrike-core",
+ "serde_json",
 ]
 
 [[package]]
@@ -1613,6 +1633,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "pocket-psp-ge"
+version = "0.1.0"
+
+[[package]]
 name = "pocket-ui-surface"
 version = "0.1.0"
 dependencies = [
@@ -1628,10 +1652,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytemuck",
+ "pocket-mod",
  "pocket-ui-surface",
  "pocket3d",
  "pocketjs-core",
+ "serde_json",
  "wgpu",
+ "winit",
 ]
 
 [[package]]
@@ -1645,11 +1672,19 @@ dependencies = [
  "gltf",
  "log",
  "png",
- "pocket3d-bsp",
+ "pocket3d-anim",
+ "pocket3d-mesh",
  "pollster",
  "serde_json",
  "wgpu",
  "winit",
+]
+
+[[package]]
+name = "pocket3d-anim"
+version = "0.1.0"
+dependencies = [
+ "glam",
 ]
 
 [[package]]
@@ -1659,6 +1694,15 @@ dependencies = [
  "anyhow",
  "glam",
  "log",
+ "pocket-psp-ge",
+]
+
+[[package]]
+name = "pocket3d-mesh"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "pocket3d-anim",
 ]
 
 [[package]]
@@ -2149,7 +2193,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfde4e2f8595f222ceaae1fb16b4963952e9b33e358869dc4cd6316b0e0790cd"
 dependencies = [
  "arrayvec",
- "grid",
  "serde",
  "slotmap",
 ]

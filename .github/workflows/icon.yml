@@ -1,0 +1,21 @@
+name: Pocket3D app icon
+
+# No path filter: an icon file added anywhere in the repository fails the guard.
+on:
+  pull_request: {}
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - run: git submodule update --init vendor/pocketjs
+      - uses: oven-sh/setup-bun@v2
+      - run: bun run test:icon

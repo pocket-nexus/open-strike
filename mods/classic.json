@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "id": "classic",
+  "title": "Classic",
+  "description": "Police officers / rifle / 3 opponents",
+  "character": null,
+  "viewmodel": null,
+  "effects": "flame",
+  "weapon": {
+    "magSize": 30,
+    "reserve": 90,
+    "fireInterval": 0.105,
+    "reloadTime": 2.4,
+    "damageBody": 34,
+    "damageHead": 100
+  },
+  "bots": {
+    "count": 3,
+    "speed": 190,
+    "attackInterval": 1.4,
+    "damageMin": 8,
+    "damageMax": 14
+  },
+  "hud": { "reload": "RELOADING", "weapon": "RIFLE" }
+}

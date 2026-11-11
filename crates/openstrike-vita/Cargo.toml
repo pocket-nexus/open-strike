@@ -16,9 +16,11 @@ path = "src/lib.rs"
 
 [dependencies]
 openstrike-character = { path = "../openstrike-character" }
+openstrike-mods = { path = "../openstrike-mods" }
 openstrike-core = { path = "../openstrike-core" }
+serde_json = "1"
 glam = "0.33"
-pocket3d-bsp = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-bsp" }
+pocket3d-bsp = { path = "../../domain/crates/pocket3d-bsp" }
 
 [target.'cfg(target_os = "vita")'.dependencies]
 vitasdk-sys = { version = "0.3.3", features = [
@@ -28,11 +30,15 @@ vitasdk-sys = { version = "0.3.3", features = [
   "SceLibKernel_stub",
 ] }
 vita2d-sys = "0.1.1"
-pocket3d-vita = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-vita" }
-pocketjs-vita = { path = "../../vendor/pocketjs/hosts/vita" }
-libquickjs-sys = { git = "https://github.com/pocket-stack/quickjs-rs.git", rev = "ba5bdd0dc013518768e76cd9e05cd30ed53dd35b" }
+pocket3d-vita = { path = "../../domain/crates/pocket3d-vita" }
+pocketjs-vita = { path = "../../vendor/pocketjs/hosts/vita", default-features = false }
+# The Pocket3D title card, played before GXM starts (src/wired.rs).
+pocket3d-title = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-title" }
+libquickjs-sys = { git = "https://github.com/pocket-nexus/quickjs-rs.git", rev = "ba5bdd0dc013518768e76cd9e05cd30ed53dd35b" }
 
 [features]
+default = ["usb-debug"]
+usb-debug = ["pocketjs-vita/usb-debug"]
 # Compile deterministic scripted input + framebuffer dumps for Vita3K E2E.
 capture = ["pocketjs-vita/capture"]
 # Rolling frame timing output for real-hardware validation.
@@ -42,7 +48,8 @@ bench = []
 title_id = "OPSK00001"
 title_name = "OpenStrike"
 # scripts/vita.ts passes static/ to PocketJS's shared final packer, which
-# overlays the branded icon and cooked maps on the complete default LiveArea.
+# overlays the cooked maps on the complete default LiveArea and sets the
+# Pocket3D app icon from the PocketJS checkout as sce_sys/icon0.png.
 build_std = "std,panic_abort"
 vita_make_fself_flags = ["-s"]
 vita_mksfoex_flags = ["-d", "ATTRIBUTE2=12"]

@@ -6,7 +6,11 @@
 // and apply after the guest turn — state read through this module is always
 // the host's last-published snapshot, never a guess.
 
+import classicMod from "../mods/classic.json";
+
 export interface StrikeState {
+  network?: string;
+  networkRequest?: string;
   time: number;
   phase: "menu" | "starting" | "live" | "won" | "lost";
   hp: number;
@@ -23,7 +27,13 @@ export interface StrikeState {
 }
 
 export type StrikeEvent =
-  | { type: "hit"; bot: number; headshot: boolean; damage: number; fatal: boolean }
+  | {
+      type: "hit";
+      bot: number;
+      headshot: boolean;
+      damage: number;
+      fatal: boolean;
+    }
   | { type: "playerDamaged"; amount: number; hp: number }
   | { type: "playerDied" }
   | { type: "roundReset" };
@@ -45,10 +55,32 @@ export interface BotsConfig {
   damageMax: number;
 }
 
+export interface ModDefinition {
+  readonly id: string;
+  readonly title: string;
+  readonly description: string;
+  readonly weapon: WeaponConfig;
+  readonly bots: BotsConfig;
+  readonly hud: { readonly reload: string; readonly weapon: string };
+}
+
 export interface NativeStrike {
+  /** Auxiliary-screen telemetry and intents; absent on single-screen hosts. */
+  __radar?: (state: RadarState | undefined) => void;
+  __mapError?: (message: string) => void;
+  touchInput?(buttons: number, lookX: number, lookY: number): void;
+  primaryInput?(moveX: number, moveY: number, buttons: number, lookX: number, lookY: number): void;
+  setPaused?(paused: number): void;
+  /** Complete packs this host can render, in native resource order. */
+  mods?: readonly ModDefinition[];
+  initialMod?: number;
+  /** Optional benchmark hook; absent from ordinary builds. */
+  __hudMark?(end: number): void;
   /** Cooked maps available to loadMap (index-aligned), host-injected. */
   maps?: string[];
-  loadMap?(index: number): void;
+  networkSupported?: boolean;
+  networkReply?(raw: string): void;
+  loadMap?(index: number, modIndex?: number, crossplay?: number): void;
   toMenu?(): void;
   setPhase(phase: string): void;
   resetRound(): void;
@@ -62,8 +94,16 @@ export interface NativeStrike {
 
 const native = (globalThis as { strike?: NativeStrike }).strike;
 if (!native) {
-  throw new Error("openstrike: no `strike` surface — is this running under the game host?");
+  throw new Error(
+    "openstrike: no `strike` surface — is this running under the game host?",
+  );
 }
+
+const mods: readonly ModDefinition[] = native.mods ?? [classicMod];
+let selectedMod = native.initialMod ?? 0;
+let crossplay = false;
+if (!Number.isInteger(selectedMod) || !mods[selectedMod])
+  throw new Error("Invalid initial mod");
 
 let current: StrikeState = {
   time: 0,
@@ -84,18 +124,81 @@ let current: StrikeState = {
 type Handler = (e: StrikeEvent) => void;
 type TickHandler = (s: StrikeState) => void;
 const handlers = new Map<string, Set<Handler>>();
+export interface RadarState {
+  map: string;
+  texture: number;
+  floor: number;
+  x: number;
+  y: number;
+  yaw: number;
+  loading: number;
+  bots: { x: number; y: number; height: number }[];
+}
+let radar: RadarState | undefined;
+let touchBlocked = false;
+const radarHandlers = new Set<(state: RadarState | undefined) => void>();
+const mapErrorHandlers = new Set<(message: string) => void>();
+native.__radar = (state) => {
+  radar = state;
+  for (const handler of radarHandlers) handler(state);
+};
+native.__mapError = (message) => {
+  for (const handler of mapErrorHandlers) handler(message);
+};
 const tickHandlers = new Set<TickHandler>();
+let tickSnapshot: TickHandler[] = [];
+let ticksChanged = false;
+
+/** Measure the HUD callback only when a profiling host installs the hook. */
+export function profileHud(callback: () => void): () => void {
+  const mark = native!.__hudMark;
+  if (!mark) return callback;
+  return () => {
+    mark(0);
+    try {
+      callback();
+    } finally {
+      mark(1);
+    }
+  };
+}
 
 native.__dispatch = (state, events) => {
   current = state;
-  for (const e of events) {
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i];
     const set = handlers.get(e.type);
     if (set) for (const h of [...set]) h(e);
   }
-  for (const h of [...tickHandlers]) h(state);
+  // Rebuild only on subscription changes. Retain a local snapshot so a
+  // callback can subscribe/unsubscribe without changing this dispatch.
+  if (ticksChanged) {
+    tickSnapshot = [...tickHandlers];
+    ticksChanged = false;
+  }
+  const ticks = tickSnapshot;
+  for (let i = 0; i < ticks.length; i++) ticks[i](state);
 };
 
 export const strike = {
+  touchBlocked: () => touchBlocked,
+  blockTouch: (blocked: boolean) => {
+    touchBlocked = blocked;
+    native.setPaused?.(blocked ? 1 : 0);
+    if (blocked) native.primaryInput?.(0, 0, 0, 0, 0);
+    if (blocked) native.touchInput?.(0, 0, 0);
+  },
+  radar: () => radar,
+  onRadar(fn: (state: RadarState | undefined) => void): () => void {
+    radarHandlers.add(fn);
+    return () => { radarHandlers.delete(fn); };
+  },
+  onMapError(fn: (message: string) => void): () => void {
+    mapErrorHandlers.add(fn);
+    return () => { mapErrorHandlers.delete(fn); };
+  },
+  touchInput: (buttons: number, lookX = 0, lookY = 0) => native.touchInput?.(buttons, lookX, lookY),
+  primaryInput: (x: number, y: number, buttons: number, dx: number, dy: number) => native.primaryInput?.(x, y, buttons, dx, dy),
   /** The last state snapshot the host published (this tick). */
   state: (): StrikeState => current,
 
@@ -110,14 +213,32 @@ export const strike = {
   /** Runs once per tick, after events, with the fresh state. */
   onTick(fn: TickHandler): () => void {
     tickHandlers.add(fn);
-    return () => tickHandlers.delete(fn);
+    ticksChanged = true;
+    return () => {
+      if (tickHandlers.delete(fn)) ticksChanged = true;
+    };
   },
 
   // ---- intent (queued host-side, applied after this guest turn) ----------
   /** Map names the host can load (empty on hosts that boot pre-loaded). */
   maps: (native.maps ?? []) as readonly string[],
   /** Ask the host to load a cooked map and start a round (menu hosts). */
-  loadMap: (index: number) => native.loadMap?.(index),
+  loadMap: (index: number) => native.loadMap?.(index, selectedMod, Number(crossplay)),
+  networkSupported: native.networkSupported ?? false,
+  selectNetwork: (enabled: boolean) => { if (current.phase === "menu") crossplay = enabled && (native.networkSupported ?? false); },
+  networkSelected: () => crossplay,
+  networkReply: (raw: string) => native.networkReply?.(raw),
+  mods,
+  mod: (): ModDefinition => mods[selectedMod],
+  /** Selection is a menu operation; a running world keeps its resources. */
+  selectMod: (index: number): boolean => {
+    if (current.phase !== "menu" || !Number.isInteger(index) || !mods[index])
+      return false;
+    selectedMod = index;
+    native.configureWeapon(mods[index].weapon);
+    native.configureBots(mods[index].bots);
+    return true;
+  },
   /** Leave the round and return to the main menu (menu hosts). */
   toMenu: () => native.toMenu?.(),
   setPhase: (phase: StrikeState["phase"]) => native.setPhase(phase),

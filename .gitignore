@@ -22,4 +22,13 @@ crates/openstrike-vita/static/maps/
 crates/openstrike-symbian/target/
 # script/e2e outputs
 /out/
+/.pocket-build/
 /pocketjs-dbg/
+
+/crates/openstrike-3ds/target/
+__pycache__/
+
+/crates/openstrike-ipod/target/
+
+/domain/target/
+/domain/crates/*/target/

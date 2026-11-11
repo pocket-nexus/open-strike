@@ -8,6 +8,7 @@ use core::ffi::{c_char, c_int};
 
 pub type size_t = usize;
 pub type JSValue = u64;
+pub type JSAtom = u32;
 pub type JSCFunctionEnum = u32;
 
 #[repr(C)]
@@ -33,6 +34,20 @@ const _: () = assert!(core::mem::size_of::<JSValue>() == 8);
 const _: () = assert!(core::mem::align_of::<JSValue>() <= 8);
 
 extern "C" {
+    #[link_name = "JS_SetProperty_real"]
+    pub fn JS_SetProperty(
+        context: *mut JSContext,
+        object: JSValue,
+        property: JSAtom,
+        value: JSValue,
+    ) -> c_int;
+    pub fn JS_NewAtom(context: *mut JSContext, name: *const c_char) -> JSAtom;
+    pub fn JS_ParseJSON(
+        context: *mut JSContext,
+        data: *const c_char,
+        length: size_t,
+        filename: *const c_char,
+    ) -> JSValue;
     fn JS_ValueGetTag_real(value: JSValue) -> c_int;
     fn JS_FreeValue_real(context: *mut JSContext, value: JSValue);
     fn JS_NewBool_real(context: *mut JSContext, value: c_int) -> JSValue;

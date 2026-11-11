@@ -16,16 +16,18 @@
 
 <p align="center"><em>A CS-like FPS on classic BSP maps — Pocket3D worlds, a PocketJS JSX HUD, gameplay in TypeScript.<br/>
 The full 3D game targets desktop (wgpu), PSP (sceGu), PS Vita
-(vita2d/GXM), and Nokia E7 (OpenGL ES 2). The bottom shot was captured
+(vita2d/GXM), Nintendo 3DS (citro3d/PICA200), iPod touch 4 (OpenGL ES 1), and Nokia E7 (OpenGL ES 2). The bottom shot was captured
 on a real PSP.</em></p>
 
-A single-player CS-like FPS built on the **Pocket runtime family**: a Rust
+A CS-like FPS with offline bots and [Mac–PSP Companion crossplay](docs/CROSSPLAY.md), built on the **Pocket runtime family**: a Rust
 core (Pocket3D) simulates and renders; the *product* — round rules, weapon
 tables, difficulty, and the entire HUD — is JavaScript running in an embedded
 QuickJS guest. OpenStrike is the first specialized game runtime of
-[PocketJS](https://github.com/pocket-stack/pocketjs); the architecture it
+[PocketJS](https://github.com/pocket-nexus/pocketjs); the architecture it
 instantiates is documented in the engine repo's
-[RUNTIMES.md](https://github.com/pocket-stack/pocketjs/blob/main/RUNTIMES.md).
+[RUNTIMES.md](https://github.com/pocket-nexus/pocketjs/blob/main/docs/RUNTIMES.md).
+
+OpenStrike is one of the two mods on [Pocket Studio](https://studio.pocket.nexus/#games). The engines behind Pocket Studio also run mods. This one reads its maps from a game you own, so Pocket Studio shows it as a demo. The code is here: take it and make it yours.
 
 ```
 crates/openstrike-core   the simulation — portable Rust shared VERBATIM by all
@@ -42,6 +44,8 @@ crates/openstrike-vita   the PS Vita build: a native 960×544 VPK on
 crates/openstrike-symbian
                          the E7 app core: the shared simulation + Pocket3D
                          GLES2, statically linked into PocketJS's Qt host
+crates/openstrike-3ds    the 3DS build: native 400×240 world/HUD plus a
+                         320×240 tactical map and touch controls
 
 game/                    the product bundle (JS/TSX) — runs on every target
   ├─ sdk.ts              `strike` SDK: state snapshots, events, commands
@@ -62,12 +66,13 @@ game grants itself no privileges a mod wouldn't have.
 ## Building
 
 ```sh
-git clone --recursive https://github.com/pocket-stack/open-strike
+git clone --recursive https://github.com/pocket-nexus/open-strike
 cd open-strike
 bun run setup      # installs the vendored framework deps + solid-js link
 bun run bootstrap  # install the pinned PSP toolchain into the shared cache
 bun run check:platforms
-bun run build:ui   # resolve PSP -> dist/pocket/psp/openstrike.{js,pak}
+bun run build:ui   # PSP -> dist/pocket/psp/openstrike.{js,pak}
+bun scripts/build-ui.ts --target macos-app  # desktop UI, host ABI 4 at 2× density
 bun scripts/build-ui.ts --target vita
 ```
 
@@ -75,8 +80,22 @@ If only previously cooked PSP maps are available, use
 `bun scripts/psp.ts --cooked-maps dist/maps --bench`. The pinned Pocket3D
 reader verifies every supplied `.p3d` before staging that map set beside the
 EBOOT. The default build still cooks from the BSP/WAD source directory.
+The cooker rejects missing textures on visible surfaces. For `cs_assault`,
+the source set must include **`cs_assault.wad`** as well as the Half-Life WADs.
+Place these files in the map's `support/` directory. Source builds cache a
+hash of the BSP, WAD inputs and cooker code; adding or replacing a WAD causes
+a new cook even when file timestamps are preserved. A pre-cooked `.p3d` with
+the cooker's missing-texture checkerboard is rejected before packaging.
 `OPENSTRIKE_COOKED_MAPS=dist/maps` selects the same input for
 `bun scripts/e2e-psp.ts` and `bun scripts/hw.ts`.
+
+The PSP host reserves **one permanent map buffer at the largest map's exact
+byte size**, with a 16-byte-aligned pointer. It reuses that buffer after dropping
+the previous world. An 18.2 MB map therefore avoids the recyclable allocator's
+32 MiB size class. Insufficient arena space produces an error before loading.
+The reader accepts a file that fills the buffer and checks EOF with a separate
+one-byte probe; a larger file or a failed read is rejected. Run
+`bun test test/psp-map-read.test.ts` for the production reader's boundary tests.
 
 PSP builds resolve the normalized SDK in a fixed order: `PSP_SDK`, then
 `PSPDEV`, then Pocket's versioned shared cache at
@@ -84,8 +103,8 @@ PSP builds resolve the normalized SDK in a fixed order: `PSP_SDK`, then
 (or the same path under `~/.cache`). Both SDK environment variables are then
 exported to the build, so Rust and QuickJS cannot silently select different
 toolchains. The vendored PocketJS manifest pins the organization-owned
-`pocket-stack/pspdev`, `pocket-stack/rust-psp`, and
-`pocket-stack/quickjs-rs` revisions used by every PSP build; no DreamCart or
+`pocket-nexus/pspdev`, `pocket-nexus/rust-psp`, and
+`pocket-nexus/quickjs-rs` revisions used by every PSP build; no DreamCart or
 personal-fork checkout is required.
 
 [`pocket.json`](pocket.json) is the portable Pocket application contract. It
@@ -103,6 +122,154 @@ ABI and viewport environment. Target artifacts are isolated under
 `dist/pocket/<target>` so concurrent PSP/Vita builds cannot overwrite one
 another. At runtime PocketJS compares target and host ABI; the plan checksum
 is build-time consistency data, not a runtime trust mechanism.
+
+## iPod touch 4
+
+The standalone `OpenStrike` User app targets iPod4,1 on iOS 6.1.6. It renders
+at 960×640 with a 480×320 landscape touch layout. PocketJS owns UIKit,
+QuickJS, the GLES1 context, depth surface, installation and capture. The
+application core owns cooked BSP resources, visibility, character animation
+and the shared 60 Hz simulation. Rendering interpolates between simulation
+ticks; touch aiming uses finger travel, so sensitivity does not depend on FPS.
+
+| Touch control | Action |
+| --- | --- |
+| Left lower area | Floating movement stick; drag farther to run |
+| Right area | Drag to aim |
+| FIRE | Hold to fire; drag on it to aim while firing |
+| JUMP | Jump on press |
+| RELOAD | Release inside the button to reload |
+| WALK | Toggle quiet walking |
+| PAUSE | Pause the round; resume or return to the menu |
+
+Contacts retain their original roles until release. Moving into FIRE does
+not start shooting. Movement, aim, fire and jump accept separate fingers.
+Pausing, death and leaving gameplay release held input; fingers held across
+a pause must lift before they can act again. The menus use 44-point rows and
+a three-column map grid.
+
+```sh
+bun run setup
+bun run ipod doctor
+bun run build:ipod
+bun run ipod deploy
+bun run ipod launch
+bun run ipod status --require-action
+bun run ipod capture
+```
+
+Set `POCKETJS_IPODTOUCH4_UDID` when more than one Apple device is connected.
+The shared PocketJS [iPod toolchain instructions](vendor/pocketjs/docs/IPODTOUCH4.md)
+cover first-time SDK and pinned USB SSH setup. The build reads verified
+`dist/maps/*.p3d`; `OPENSTRIKE_COOKED_MAPS` selects another cooked-map directory.
+Use the map cooker described below to produce those files on a fresh checkout.
+
+Optional loadouts use the same local manifests as the other handheld builds:
+
+```sh
+bun run build:ipod --mod /absolute/path/to/frieren/mod.json --mod /absolute/path/to/pikachu/mod.json
+bun run ipod deploy
+```
+
+The selected paths persist in ignored `.pocket/ipodtouch4/build-config.json`
+for subsequent builds and deployment. Set `OPENSTRIKE_MOD_PACKS='[]'` to reset to
+Classic. The app descriptor lives in `hosts/ipodtouch4/ipodtouch4.json`;
+artifacts are `vendor/pocketjs/dist/ipodtouch4/OpenStrike.app` and `.ipa`.
+The bundle id and URL scheme differ from other PocketJS apps on the device.
+
+`bun run ipod:input tap 240 176` sends a UIKit tap in landscape coordinates.
+`sequence <file>` accepts the test helper's multi-contact frame format in
+`test/fixtures/ipod-contacts.c`. `read` returns host and game telemetry over
+a fresh USB tunnel. The helper is a separate test executable; the shipping
+app contains no input-injection endpoint. Captures, frame-time samples and
+receipts belong under ignored `.pocket-build/validation/ipod-touch/`.
+`bun run test:e2e:ipod` checks four contacts, aim distance, fire/reload/walk,
+pause with a held finger, both local loadouts and repeated map entry on the
+connected device. Build with the Frieren and Pikachu packs before that test.
+
+## Nintendo 3DS
+
+The top screen renders the textured BSP world, selected characters, weapons and
+shared game HUD through citro3d. The lower screen uses PocketJS's optional
+`display.auxiliary` and `input.touch.auxiliary` capabilities for a floor-aware
+map, player heading, opponents (amber when on a different level), 1×/2×/4×
+zoom, and a local waypoint. Local mod packs use the same catalogue as PSP,
+including textured character animation, staff beams and thrown Poke Balls.
+The game uses the shared 60 Hz clock independently of presentation, retains
+PVS draw groups, blends character poses on PICA, and updates floor slices
+in bounded batches.
+
+| Control | Action |
+| --- | --- |
+| Circle Pad | Move |
+| C-stick (New 3DS), or X/B/Y/A | Aim |
+| Drag the lower-screen map | Aim; works on Old 3DS too |
+| R / lower-screen FIRE | Fire while held |
+| D-pad down / tap RELOAD | Reload |
+| L / lower-screen JUMP | Jump |
+| D-pad up / hold WALK | Slow walk |
+| Tap the map / CLEAR MARK | Place / remove a local waypoint |
+| Tap the zoom button | Cycle 1×, 2× and 4×; zoom follows the player |
+| SELECT | Return-to-menu dialog; A confirms the focused choice |
+| L+R+START | Return to Homebrew Launcher |
+
+Moving off a touch button cancels it until the next touch. Touch controls
+release on cancellation, round end and menu transitions. Waypoints are local
+navigation aids; this single-player game has no team radio or buy economy.
+
+Initialize the submodules with `git submodule update --init` and run `bun run
+setup`. Install the Rust toolchain pinned by
+`vendor/pocketjs/hosts/3ds/core/rust-toolchain.toml` with `rust-src`, start
+Docker, and pull the digest-pinned devkitARM image listed in
+`vendor/pocketjs/tools/3ds-toolchain.ts`. Supply the eight classic cooked maps and `wwdc24-parkour.p3d` (see Map data
+below and the WWDC generator):
+
+```sh
+OPENSTRIKE_COOKED_MAPS=/path/to/cooked/maps bun run build:3ds
+# Optional locally authored/baked packs, as on PSP:
+bun run build:3ds --mod out/mods/frieren/mod.json --mod out/mods/pikachu/mod.json
+bun run test:3ds
+OPENSTRIKE_COOKED_MAPS=/path/to/cooked/maps bun run test:e2e:3ds
+```
+
+Copy the contents of `dist/3ds/sd/` to the SD card root. The entry is
+`/3ds/OpenStrike/OpenStrike.3dsx`, with maps beside it in `maps/`. The build
+validates each cooked map and records every staged file's SHA-256 in
+`dist/3ds/build.json`, and creates `dist/3ds/OpenStrike-3DS-SD.zip`. For ftpd, use the address shown on the console:
+
+```sh
+bun run deploy:3ds --host <3ds-ip> --port 5000
+```
+
+The deployer checks the production receipt, uploads temporary files, hashes
+their readback, then publishes them. Exit ftpd before launching the game.
+Transfer verification does not establish physical launch or performance.
+
+The emulator test needs Azahar (`AZAHAR=/Applications/Azahar.app` by default)
+and an initialized local Azahar profile. It creates an isolated SD/profile,
+records PICA readbacks of both screens, and checks native telemetry for
+button aiming, touch aiming, fire/release, reload and jump. Captures live in
+ignored `.pocket-build/validation/3ds/`; `dist/3ds/capture/` is a separate
+instrumented binary. Hardware performance, touch feel and HBL return still
+need testing on each console model.
+
+Set `E2E_3DS_SCENARIO=menu`, `missing-map`, or `retry` to exercise returning
+from a loaded world, a missing SD map, or selecting an available map after
+that failure. Missing-map cases remove only the isolated test SD's copy.
+`E2E_3DS_SCENARIO=map E2E_3DS_MAP=de_nuke` checks a named map's native
+identity, texture loading and both framebuffers. Set `OPENSTRIKE_MOD_PACKS`
+to a JSON array of local manifest paths and `E2E_3DS_MOD_INDEX` to select a
+pack. The `mods` scenario with index 1 and two packs checks Frieren → Classic
+→ Pikachu, including projectile simulation. The developer RPC can query
+`strike.__perf()` for the last 360 frame intervals, percentiles and draw counts;
+capture builds use virtual time and cannot establish hardware FPS.
+
+The build uses the pinned PocketJS host and UI core. `host.patch` applies
+native lifecycle/render hooks to an ignored copy under `.pocket/3ds-dev/`,
+after the preceding GPU frame has retired, and restores UI vertex state
+after native rendering. It also plays the [Pocket3D title card](#pocket3d-title-card)
+after `gfxInitDefault()`. A patch mismatch fails the build. The vendored
+PocketJS checkout stays unmodified.
 
 ## Nokia E7: full 3D OpenStrike
 
@@ -187,19 +354,16 @@ data). Point the game at a directory containing them:
 Any GoldSrc-era (BSP v30) map works; the eight classic CS maps are the
 tested set. `OPENSTRIKE_MAPS` can replace `--maps-dir` below.
 
-The desktop also reads the existing cooked `.p3d` maps, including their textures,
-collision hulls and spawn points. With `dist/maps/de_dust2.p3d` present, no map
-argument is needed. `--map /path/to/map.p3d` chooses another cooked map.
-The desktop build resolves its own macOS/Linux UI target and passes the resolved
-host ABI and density into Rust; a PSP UI bundle cannot be loaded by this host.
-`OPENSTRIKE_UI_DIST` overrides the matching desktop bundle directory.
-
 ### Play
 
 ```sh
-bun run build:desktop
-target/release/openstrike --maps-dir ~/path/to/cs-maps
+cargo run --release -p openstrike -- --maps-dir ~/path/to/cs-maps
 ```
+
+The desktop also reads the cooked `.p3d` maps the handhelds use, with their
+textures, collision hulls and spawn points: with `dist/maps/de_dust2.p3d`
+present no map argument is needed, and `--map /path/to/map.p3d` chooses
+another cooked map (no BSP or WAD files required).
 
 | Input | Action |
 | --- | --- |
@@ -241,11 +405,11 @@ boot the full QuickJS guest so the *shipped* rules and HUD are what gets
 tested:
 
 ```sh
-target/release/openstrike --maps-dir $MAPS --script walk   --screenshot out/walk
-target/release/openstrike --maps-dir $MAPS --script model  --screenshot out/model
-target/release/openstrike --maps-dir $MAPS --script combat --screenshot out/combat
-target/release/openstrike --maps-dir $MAPS --script round  --screenshot out/round
-target/release/openstrike --maps-dir $MAPS --script lose   --screenshot out/lose
+cargo run --release -p openstrike -- --maps-dir $MAPS --script walk   --screenshot out/walk
+cargo run --release -p openstrike -- --maps-dir $MAPS --script model  --screenshot out/model
+cargo run --release -p openstrike -- --maps-dir $MAPS --script combat --screenshot out/combat
+cargo run --release -p openstrike -- --maps-dir $MAPS --script round  --screenshot out/round
+cargo run --release -p openstrike -- --maps-dir $MAPS --script lose   --screenshot out/lose
 ```
 
 - `walk` — spawn, run at 250 u/s, slide along walls without clipping, jump
@@ -261,10 +425,10 @@ target/release/openstrike --maps-dir $MAPS --script lose   --screenshot out/lose
 
 OpenStrike runs on an actual Sony PSP — same simulation, same JS rules, same
 JSX HUD, rendered by the sceGu backend (`pocket3d-gu`). Not a stripped-down
-demo: the identical `dist/pocket/psp/openstrike.js` bundle that drives the
-desktop build boots in QuickJS on the handheld. It ships as a proper EBOOT —
-branded XMB icon and backdrop, a main menu that lists every cooked map, and
-SELECT to return there mid-round.
+demo: the same game sources compile into target-specific UI bundles for
+desktop and PSP, each checked against its native host contract. It ships as a proper EBOOT —
+the [Pocket3D app icon](#pocket3d-app-icon) and OpenStrike's backdrop on the XMB,
+a main menu that lists every cooked map, and SELECT to return there mid-round.
 
 <p align="center">
   <img src="docs/psp-menu.png" width="400" alt="OpenStrike PSP main menu — a two-column map list (all eight CS classics) under the wordmark" />
@@ -275,7 +439,7 @@ SELECT to return there mid-round.
 deterministic backend the byte-exact e2e goldens run on.</em></p>
 
 ```sh
-git submodule update --init          # pocket-stack/pocketjs + rust-psp + quickjs-rs
+git submodule update --init          # pocket-nexus/pocketjs + rust-psp + quickjs-rs
 bun scripts/psp.ts                   # resolve PSP plan → bundle → maps → EBOOT
 bun scripts/psp.ts --package         # + assemble dist/PSP/GAME/OpenStrike (ms0 layout)
 bun scripts/hw.ts --bench            # launch over PSPLINK; frame times stream back
@@ -283,21 +447,56 @@ bun scripts/e2e-psp.ts               # deterministic PPSSPP goldens (spawn/walk/
 ```
 
 Install: copy `dist/PSP/` to a Memory Stick root (or the emulator's memstick
-dir) on a homebrew-enabled PSP; OpenStrike appears in the Game menu with its
-icon. The build needs the PSP toolchain from the PocketJS ecosystem
+dir) on a homebrew-enabled PSP; OpenStrike appears in the Game menu beside the
+Pocket3D app icon. The build needs the PSP toolchain from the PocketJS ecosystem
 (`pocket doctor`) plus the CS maps (`OPENSTRIKE_MAPS`).
 
 Controls: analog stick moves, `△/✕/□/○` looks, `R` fires, `L` jumps, d-pad
 down reloads, d-pad up walks, **SELECT** opens the return-to-menu dialog. In
 the menu, d-pad selects a map and `○` deploys.
 
-Current hardware measurements are in the [combat report](docs/PSP_COMBAT_PERFORMANCE.md).
+Earlier hardware measurements are in the [combat report](docs/PSP_COMBAT_PERFORMANCE.md).
 The HUD uses fixed text cells, batched paint updates and native effect fades;
 the PSP presentation loop preserves refresh opportunities when a completed
 frame arrives during a new blanking interval. Cooking bakes lightmaps into vertex colors, keeps WAD
 textures as swizzled CLUT8 with full mip chains, and ships PVS so the renderer
 draws only the visible leaves; each `.p3d` is consumed zero-copy, and maps
 load on demand from `maps/` next to the EBOOT into one reused buffer.
+
+The PSP simulation follows elapsed time at **60 fixed ticks per second**,
+including one complete JavaScript rules/HUD turn per tick. Rendering can run
+at a lower rate without slowing movement, jumps or reloads. Catch-up is capped
+at four ticks per frame; map transitions reset the clock. The host collects
+JavaScript cycles when arena growth exceeds 256 KiB after the last collection.
+The renderer culls
+individual faces, uses bounded optional triangle strips, and retains the
+original triangle lists when a cache entry cannot be built.
+
+For repeatable hardware checks, build with `--idle-bench` (fixed camera, no pad input), `--motion-bench`
+(pad-driven movement, jumping, firing, reloading and menu/map transitions) or `--combat-bench`
+(combat and round transitions). `--bench` records manual play. These modes write `OpenStrike-bench.jsonl`
+with frame timing, simulation tick counts and submitted index counts. Use
+`--map de_inferno --cooked-maps dist/maps --release` with the selected mode.
+`--proximity-bench` stages one walking actor at a fixed camera-relative distance
+(`OPENSTRIKE_PSP_PROBE_DISTANCE`, default 36 units); `--approach-bench` moves
+toward and away from an opponent while collision, AI, damage and round rules run.
+The HUD callback, DrawList build and UI GE submission have separate timing fields.
+Rebuild without a benchmark flag for interactive acceptance.
+
+## Shared device mechanisms
+
+OpenStrike owns its BSP/FPS rendering and compiler policy. Pocket3D names a
+family of reusable mechanisms, rather than one required scene engine. Atlas
+owns its PlaceIR and renderers independently.
+
+The pinned `vendor/pocketjs/devices/vita/pocket-vita-gxm` supplies mapped GXM
+memory and shader registration to the existing `pocket3d-vita` BSP renderer.
+Atlas uses the same kernel revision directly. OpenStrike retains its embedded
+GXPs, world layouts, visibility, materials and render passes; it does not enable
+Atlas's optional runtime shader compiler. BSP compiler and renderer sources
+now live in `domain/`. GE frame storage/texture layout and PICA texture storage
+also come from the pinned PocketJS device kernels. Hosts, input, guest execution
+and debug transports remain PocketJS responsibilities.
 
 ## PS Vita
 
@@ -306,27 +505,51 @@ as desktop and PSP. Pocket3D renders at Vita's native 960×544, while the
 PocketJS UI keeps its 480×272 logical layout and rasterizes at Vita's native
 2× density. Text, curves and rounded corners therefore use the full 960×544
 pixel grid instead of duplicating PSP pixels. There is no letterboxing or
-crop. Touch is not implemented yet; both sticks, shoulders, d-pad, face
-buttons and SELECT cover gameplay and menus.
+crop. Both sticks, shoulders, d-pad, face buttons and SELECT cover gameplay
+and menus. The standalone `OPSK00001` application includes USB debugging
+by default; L + R + SELECT opens the native recovery menu.
 
 ```sh
 export VITASDK="$HOME/vitasdk"
 export PATH="$VITASDK/bin:$HOME/.cargo/bin:$PATH"
 
 OPENSTRIKE_MAPS=~/path/to/cs-maps bun scripts/vita.ts --release # resolved Vita plan → VPK
+OPENSTRIKE_COOKED_MAPS=dist/maps bun run vita:dev build --mod .pocket/mods/frieren/mod.json --mod .pocket/mods/pikachu/mod.json
+bun run vita:dev install --mount /Volumes/PSV
+# Install the staged VPK in VitaShell, then launch OpenStrike.
+bun run vita:dev serve
+# From another terminal:
+bun run vita:dev status
+bun run vita:dev push
+bun run vita:dev capture --out .pocket-build/validation/vita-wired/frame.png
+bun run vita:dev native
 bun scripts/e2e-vita.ts
 ```
 
-The VPK is written to `dist/vita/OpenStrike.vpk`. PocketJS's shared Vita
-packager combines OpenStrike's branded 128×128 icon and cooked maps with the
-framework's black 840×500 background, 280×158 startup image, and LiveArea
-template. The Vita3K golden driver uses an isolated VitaFS, scripted dual-stick
-input, a guest completion marker, byte-exact 960×544 HUD captures, and native
-Pocket3D scene-stat assertions.
+The VPK is written to `dist/vita/OpenStrike.vpk`, beside its SELF and
+`OpenStrike.runtime.json`. USB status includes game and frame timing data;
+`push`/`watch` reload the complete guest and return to the menu. A failed
+evaluation or first frame restores the previous guest. `native` replaces
+the SELF through PocketJS's A/B slots and retains the installed recovery
+`eboot.bin`. `--no-usb-debug` builds without the driver. Local mod packs
+share character animation, staff/ball weapons and feathered effects with
+PSP and 3DS. PocketJS's shared Vita
+packager combines the 128×128 [Pocket3D app icon](#pocket3d-app-icon) and
+OpenStrike's cooked maps with the framework's black 840×500 background,
+280×158 startup image, and LiveArea template. The Vita3K golden driver uses
+an isolated VitaFS, scripted dual-stick input, a guest completion marker,
+byte-exact 960×544 HUD captures, and native Pocket3D scene-stat assertions.
 See [`crates/openstrike-vita/README.md`](crates/openstrike-vita/README.md) for
 the pinned toolchain, controls and emulator-capture details.
 
 ## Modding, v0.1 shape
+
+PSP, Vita and 3DS packages can include [selectable mod packs](docs/MODS.md): choose a
+character, first-person weapon and shot presentation together at game
+initialization. The local Frieren example pairs one opponent with a
+Blender-authored staff and Zoltraak effects. A second Blender recipe adds
+Pikachu with ballistic Poké Ball throws. The shared catalogue and guest
+contract are available for other host adapters.
 
 The `strike` surface currently speaks: state snapshots (`hp`, `ammo`,
 `phase`, `aliveBots`, …), events (`hit`, `playerDamaged`, `playerDied`,
@@ -344,3 +567,84 @@ grows by appending, never by renumbering.
 - Bot character: see [assets/models/CREDITS.md](assets/models/CREDITS.md).
 - Map/texture data (`.bsp`/`.wad`) is © Valve and must be provided from your
   own copy of the game.
+
+### Author maps in Blender
+
+See [Blender maps](docs/BLENDER_MAPS.md) for the Blender → Valve 220 → GoldSrc BSP →
+Pocket3D toolchain and the editable WWDC24 atrium, stairs and presentation-hall
+scene. Generated maps and `.blend` files stay outside Git.
+
+### Pocket3D ownership
+
+OpenStrike's BSP compiler, `.p3d` format, collision and GE/GXM/GLES2 renderers
+live in [`domain/`](domain/README.md). PocketJS supplies the pinned host,
+packaging/toolchains and thin native device kernels. The desktop BSP adapter is
+also owned here; PocketJS's generic widget, mesh, animation and VRM code stays
+independent of BSP. Atlas owns its own PlaceIR compiler and scene renderer.
+
+### Pocket3D title card
+
+OpenStrike is built on [Pocket3D](https://3d.pocket.nexus) and shows the
+Pocket3D title card at launch on PS Vita, PSP and Nintendo 3DS: the mark and
+the wordmark for 144 ticks at 60 Hz (2.4 s). The pinned PocketJS puts Pocket3D
+(`pocket3d/`, `devices/` and `engine/pocket3d/`) under the
+[Pocket3D License 1.0](https://github.com/pocket-nexus/pocketjs/blob/main/pocket3d/LICENSE),
+which makes the card a condition of distributing a game that draws with it.
+OpenStrike's own sources stay under the MIT [LICENSE](LICENSE).
+
+The card plays first at every launch, before the renderer starts. The CPU
+draws it into the display frame buffer, so it uses no GXM, GE or citro3d state.
+
+| Console | Call | Site |
+| --- | --- | --- |
+| PS Vita | `pocket3d_title::vita::play()` | `crates/openstrike-vita/src/wired.rs`, before `graphics::init_with_pool` |
+| PSP | `title()` | `crates/openstrike-psp/src/main.rs`, before `host::init_graphics` |
+| Nintendo 3DS | `pocket3d_title_play()` | `crates/openstrike-3ds/host.patch`, after `gfxInitDefault()` and before `C3D_Init` |
+
+The drawers and the art come from
+`vendor/pocketjs/engine/pocket3d/crates/pocket3d-title`. Do not skip, shorten,
+recolour or redraw the card in this repository, and do not draw the mark with
+the game's renderer. No build flag or boot switch skips it: capture and
+benchmark builds play it too. The desktop, iPod touch 4 and Nokia E7 builds and
+the static map viewer have no call yet and do not show the card.
+
+### Pocket3D app icon
+
+The app icon in each console's launcher is the Pocket3D app icon: the Pocket3D
+mark on the title card's ground, `#171226`. Each build reads the file for its
+console from the pinned PocketJS checkout, under
+`vendor/pocketjs/engine/pocket3d/icon/`. **This repository holds no icon
+file**, so a new drawing reaches OpenStrike with the PocketJS pin. The
+launcher's title string, `OpenStrike`, names the game.
+
+| Console | File under `vendor/pocketjs/engine/pocket3d/icon/` | Wiring |
+| --- | --- | --- |
+| PSP | `psp/ICON0.PNG` (144×80) | `xmb_icon_png` in `crates/openstrike-psp/Psp.toml` |
+| PS Vita | `vita/icon0.png` (128×128, 8-bit indexed) | `icon: POCKET3D_ICON.vita`, given to `packageVitaVpk` in `scripts/vita.ts` |
+| Nintendo 3DS | `3ds/icon.png` (48×48) and `3ds/icon-small.png` (24×24) | `ICON` and `SMALL_ICON` in `scripts/3ds.ts`, which `smdhtool` reads into the SMDH |
+| iPod touch 4 | `ios/Icon@2x.png` (114×114) | `icon` in `hosts/ipodtouch4/ipodtouch4.json`; PocketJS's packager writes the bundle's 114- and 57-pixel icons from it, and its `Info.plist` sets `UIPrerenderedIcon` |
+
+Do not add an `ICON0.png`, an `icon0.png`, a 3DS `icon*.png` or a bundle
+`Icon*.png` to this repository, and do not redraw, recolour or crop the icon.
+`test/pocket3d-icon.test.ts` fails when Git tracks an icon file here or when a
+build stops reading the PocketJS files. The procedure, including a new console
+target, is `vendor/pocketjs/skills/pocket3d-brand/SKILL.md`.
+
+The PSP's XMB backdrop, `crates/openstrike-psp/assets/PIC1.png`, is
+OpenStrike's own picture; `scripts/gen-cover.ts` builds it. The desktop and
+Nokia E7 builds do not take the Pocket3D app icon.
+
+### Device validation ownership
+
+Physical 3DS deployment (`bun run deploy:3ds`, including the compatible Python
+entry point) holds PocketJS's `3ds:wire` lease for the complete FTP publication
+and readback. Vita development inherits the shared USB control/transport leases
+from the pinned host tools. Independent worktrees using those tools cannot
+replace a device during another owner's run; nested commands inherit the lease.
+Raw tools and older checkouts still require coordination. See
+[PocketJS device validation](vendor/pocketjs/docs/DEVICE-VALIDATION.md).
+
+FTP readback proves delivered bytes. It does not prove that OpenStrike launched,
+that a BSP map rendered correctly, or that a gameplay/frame-time scenario passed.
+Those policies and evidence remain OpenStrike's responsibility; Atlas authoring,
+PlaceIR, target recipes and camera acceptance do not enter this repository.

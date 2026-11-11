@@ -20,9 +20,26 @@ extern crate alloc;
 mod character_probe;
 #[cfg(feature = "combat-bench")]
 mod combat_probe;
-#[cfg(all(feature = "combat-bench", feature = "character-bench"))]
-compile_error!("combat-bench requires the real simulation; use one probe at a time");
+#[cfg(any(
+    all(feature = "combat-bench", feature = "character-bench"),
+    all(feature = "motion-bench", feature = "combat-bench"),
+    all(feature = "motion-bench", feature = "character-bench"),
+    all(feature = "motion-bench", feature = "capture"),
+    all(feature = "idle-bench", feature = "motion-bench"),
+    all(feature = "idle-bench", feature = "combat-bench"),
+    all(feature = "idle-bench", feature = "character-bench"),
+    all(feature = "idle-bench", feature = "capture"),
+    all(feature = "map-bench", feature = "capture"),
+    all(feature = "map-bench", feature = "idle-bench"),
+    all(feature = "map-bench", feature = "motion-bench"),
+    all(feature = "map-bench", feature = "combat-bench"),
+    all(feature = "map-bench", feature = "character-bench"),
+    all(feature = "encounter-bench", feature = "approach-bench"),
+))]
+compile_error!("use one scripted benchmark/capture mode at a time");
 mod input;
+#[cfg(feature = "map-bench")]
+mod map_probe;
 mod maps;
 mod present;
 mod strike;
@@ -30,19 +47,21 @@ mod strike;
 use core::ffi::c_void;
 
 use libquickjs_sys::*;
-use pocket3d_gu::{Camera3d, FramePool, WorldRenderer, sky};
+use pocket3d_gu::{sky, Camera3d, FramePool, WorldRenderer};
 use pocketjs_psp::{dbg, ffi, ge, host, pak};
-#[cfg(feature = "capture")]
+#[cfg(any(
+    feature = "capture",
+    feature = "motion-bench",
+    feature = "idle-bench",
+    feature = "map-bench"
+))]
 use psp::sys::CtrlButtons;
-#[cfg(feature = "capture")]
-use psp::sys::DisplayPixelFormat;
-#[cfg(feature = "capture")]
-use psp::sys::DisplaySetBufSync;
 #[cfg(any(feature = "capture", feature = "bench"))]
 use psp::sys::IoOpenFlags;
 use psp::sys::{self, CtrlMode, GuContextType, GuSyncBehavior, GuSyncMode, SceCtrlData};
 
 use input::PadInput;
+use openstrike_core::clock::{FixedClock, TICK_SECONDS};
 use openstrike_core::StrikeSim;
 
 psp::module!("openstrike", 1, 1);
@@ -60,7 +79,7 @@ static CAP_START: &str = env!("OPENSTRIKE_PSP_CAP_START");
 #[cfg(feature = "capture")]
 static CAP_N: &str = env!("OPENSTRIKE_PSP_CAP_N");
 
-const DT: f32 = 1.0 / 60.0;
+const DT: f32 = TICK_SECONDS;
 
 use alloc::vec::Vec;
 use openstrike_core::sim::Command;
@@ -70,6 +89,7 @@ use openstrike_core::sim::Command;
 /// overwritten by the next load (see the frame loop's host_cmd handling).
 struct Game {
     sim: StrikeSim,
+    map_key: alloc::string::String,
     world: WorldRenderer<'static>,
 }
 
@@ -102,10 +122,43 @@ unsafe fn log_exception(ctx: *mut JSContext) {
     host::log_exception_with(ctx, |_| {});
 }
 
+/// The Pocket3D title card, drawn into video memory before the GE is set up.
+unsafe fn title() {
+    // The uncached mirror of video memory: what is written is what the display reads.
+    let vram = (sys::sceGeEdramGetAddr() as usize | 0x4000_0000) as *mut u8;
+    sys::sceDisplaySetMode(sys::DisplayMode::Lcd, 480, 272);
+    let mut surface = pocket3d_title::Surface {
+        pixels: core::slice::from_raw_parts_mut(vram, 512 * 272 * 4),
+        width: 480,
+        height: 272,
+        stride: 512,
+        layout: pocket3d_title::Layout::Rgba8,
+    };
+    pocket3d_title::play(&mut surface, |_| {
+        sys::sceDisplaySetFrameBuf(
+            vram,
+            512,
+            sys::DisplayPixelFormat::Psm8888,
+            sys::DisplaySetBufSync::NextFrame,
+        );
+        sys::sceDisplayWaitVblankStart();
+    });
+    // `play` leaves video memory as zero bytes, so the GE's 16-bit display
+    // buffer on the same bytes is black until the first frame is drawn.
+}
+
 unsafe fn run() {
     psp::enable_home_button();
     // Full clocks (PSPLINK sessions inherit 222 MHz; retail 3D games run 333).
     sys::scePowerSetClockFrequency(333, 333, 166);
+    // The Pocket3D title card plays first at every launch.
+    title();
+    #[cfg(feature = "framebuffer16")]
+    host::init_graphics_with_format(
+        host::GfxConfig { depth: true },
+        sys::DisplayPixelFormat::Psm5650,
+    );
+    #[cfg(not(feature = "framebuffer16"))]
     host::init_graphics(host::GfxConfig { depth: true });
 
     sys::sceCtrlSetSamplingCycle(0);
@@ -113,6 +166,11 @@ unsafe fn run() {
     let mut pad_data = SceCtrlData::default();
     let mut pad = PadInput::new();
 
+    // The map and this VRAM region are reused only after dropping Game and
+    // fencing the GE at a transition. No renderer survives a replacement.
+    let texture_memory = host::take_render_memory().unwrap();
+    let texture_ptr = texture_memory.as_mut_ptr();
+    let texture_cap = texture_memory.len();
     // ---- UI core + assets (before any JS) ----
     let ui = ffi::init_ui();
     let (textures, sprites) = pak::feed(ui, APP_PAK);
@@ -126,15 +184,24 @@ unsafe fn run() {
     // The backing memory is never freed (arena world), so treating it as
     // 'static is honest; soundness rule: the current Game (which borrows
     // it through CookedMap) is dropped before any reload overwrites it.
-    let words = (max_map_bytes as usize + 15) / 16 + 1;
-    let map_buf_ptr = alloc::boxed::Box::leak(alloc::vec![0u128; words].into_boxed_slice())
-        .as_mut_ptr() as *mut u8;
-    let map_buf_cap = words * 16;
+    // Recyclable Box/Vec allocations round up to a power-of-two size class:
+    // an 18.2 MB map would reserve 32 MiB on a PSP-1000. The permanent arena
+    // API consumes the requested bytes plus pointer-alignment padding only.
+    let map_buf_cap = max_map_bytes as usize;
+    let map_buf_ptr = pocketjs_psp::arena::alloc_permanent(map_buf_cap, 16);
+    if map_buf_ptr.is_null() {
+        host::halt("not enough memory for the largest cooked map");
+    }
 
     let mut pool = FramePool::new();
     let sky_params = sky::SkyParams::default();
-    let rifle = present::build_rifle();
-    let mut officers = present::OfficerRenderer::new();
+    let mut active_mod = openstrike_mods::INITIAL;
+    let mut rifle = present::build_viewmodel(openstrike_mods::get(active_mod).unwrap());
+    let mut effects = present::EffectRenderer::new();
+    let mut projectile_mesh = present::build_projectile(openstrike_mods::get(active_mod).unwrap());
+    let mut officers = Some(present::CharacterRenderer::new(
+        openstrike_mods::get(active_mod).unwrap().character(),
+    ));
 
     // ---- QuickJS ----
     let rt = pocketjs_psp::qjs_alloc::new_runtime();
@@ -148,7 +215,18 @@ unsafe fn run() {
     let global = JS_GetGlobalObject(ctx);
     dbg::init();
     ffi::register(ctx, global, &textures, &sprites);
-    strike::register(ctx, global, &map_names);
+    if !strike::register(
+        ctx,
+        global,
+        &map_names,
+        strike::HostConfig {
+            mods: openstrike_mods::METADATA,
+            initial_mod: openstrike_mods::INITIAL,
+            network_supported: pocketjs_psp::offload::enabled(),
+        },
+    ) {
+        host::halt("cannot initialize strike catalogue");
+    }
     if !APP_PAK.is_empty() {
         let ab = JS_NewArrayBuffer(
             ctx,
@@ -183,6 +261,9 @@ unsafe fn run() {
     // and bots at eval time) are game CONFIGURATION: keep them and replay
     // into every freshly loaded simulation.
     let mut boot_cfg: Vec<Command> = Vec::new();
+    // Configuration issued during guest startup also applies to autostart's
+    // first round, before the first simulation tick or rendered frame.
+    strike::drain(|cmd| openstrike_core::sim::retain_configuration(&mut boot_cfg, cmd));
     let mut game: Option<Game> = None;
     let mut menu_time: f64 = 0.0;
     if !AUTOSTART.is_empty() {
@@ -190,14 +271,32 @@ unsafe fn run() {
         let Some(idx) = idx else {
             host::halt("autostart map not in the catalogue");
         };
-        match maps::load(&map_names[idx], map_buf_ptr, map_buf_cap, &boot_cfg) {
-            Ok(g) => game = Some(g),
+        match maps::load(
+            &map_names[idx],
+            map_buf_ptr,
+            map_buf_cap,
+            texture_ptr,
+            texture_cap,
+            &boot_cfg,
+        ) {
+            Ok(mut g) => {
+                openstrike_mods::get(active_mod)
+                    .unwrap()
+                    .configure(&mut g.sim);
+                game = Some(g);
+            }
             Err(e) => host::halt(e),
         }
     }
 
-    // ---- Frame loop (pipelined present, one tick per vblank) ----
+    // ---- Fixed simulation clock; presentation may skip display refreshes. ----
+    let mut last_gc_bump = 0usize;
+    let mut clock = FixedClock::new(sys::sceKernelGetSystemTimeWide() as u64);
+    #[cfg(feature = "bench")]
+    let mut tick_count = 0u64;
     let mut frame_count: u32 = 0;
+    #[cfg(feature = "map-bench")]
+    let map_probe = map_probe::MapProbe::new();
     let mut last_present_vcount = sys::sceDisplayGetVcount();
     #[cfg(feature = "bench")]
     let mut bench = Bench::new();
@@ -206,93 +305,143 @@ unsafe fn run() {
     loop {
         #[cfg(feature = "bench")]
         let bench_t0 = bench_now();
-        sys::sceCtrlReadBufferPositive(&mut pad_data, 1);
+        // Peek avoids waiting for another controller sampling interrupt.
+        sys::sceCtrlPeekBufferPositive(&mut pad_data, 1);
+        #[cfg(not(any(feature = "idle-bench", feature = "map-bench")))]
         #[cfg_attr(not(feature = "capture"), allow(unused_mut))]
         let mut sample = (pad_data.buttons, pad_data.lx, pad_data.ly);
         #[cfg(feature = "capture")]
         {
             sample = capture_sample(frame_count, sample);
         }
-        #[cfg_attr(not(feature = "combat-bench"), allow(unused_mut))]
-        let mut _tick = pad.map(sample.0, sample.1, sample.2, DT);
-        let mask = sample.0.bits() as i32;
-
-        // Simulation (game stage only; the menu has no world).
-        if let Some(g) = &mut game {
-            #[cfg(feature = "combat-bench")]
-            {
-                _tick.sim = combat.input(&mut g.sim);
-                _tick.look_dx = 0.0;
-                _tick.look_dy = 0.0;
-            }
-            #[cfg(not(feature = "character-bench"))]
-            {
-                g.sim.apply_look(_tick.look_dx, _tick.look_dy);
-                g.sim.tick(&g.world.map().collision, DT, &_tick.sim);
-            }
-            #[cfg(feature = "character-bench")]
-            {
-                g.sim.time += DT;
-            }
-        } else {
-            menu_time += DT as f64;
-        }
+        #[cfg(any(feature = "idle-bench", feature = "map-bench"))]
+        let sample = (CtrlButtons::empty(), 128, 128);
         #[cfg(feature = "bench")]
-        let bench_after_sim = bench_now();
+        let mut observed_buttons = sample.0.bits();
+        #[cfg(not(feature = "capture"))]
+        let ticks = clock.advance(sys::sceKernelGetSystemTimeWide() as u64);
+        // Capture scripts remain deterministic: one fixed tick per captured frame.
+        #[cfg(feature = "capture")]
+        let ticks = 1;
         #[cfg(feature = "bench")]
-        if let Some(g) = &game {
-            bench.observe_events(&g.sim);
-        }
-
-        // Guest turn: facts out, HUD frame, microtasks, intent in.
-        let ok = match &mut game {
-            Some(g) => strike::dispatch(ctx, global, &mut g.sim),
-            None => strike::dispatch_menu(ctx, global, menu_time),
-        };
-        if !ok {
-            log_exception(ctx);
-        }
-        #[cfg(feature = "bench")]
-        let bench_after_dispatch = bench_now();
-        let mut args = [JS_NewInt32(ctx, mask)];
-        let r = JS_Call(ctx, frame_fn, global, 1, args.as_mut_ptr());
-        if JS_ValueGetTag(r) == JS_TAG_EXCEPTION {
-            log_exception(ctx);
-        }
-        JS_FreeValue(ctx, r);
-        #[cfg(feature = "bench")]
-        let bench_after_js = bench_now();
-        host::drain_jobs(rt);
-        strike::drain(|cmd| match &mut game {
-            Some(g) => g.sim.apply(cmd, 0),
-            None => boot_cfg.push(cmd),
-        });
-        #[cfg(feature = "character-bench")]
-        if let Some(g) = &mut game {
-            character_probe::stage(&mut g.sim, frame_count);
-        }
+        let mut segments = [0u64; 4];
+        let mut _tick = input::TickInput::default();
         let mut host_cmd: Option<strike::HostCmd> = None;
-        strike::drain_host(|c| host_cmd = Some(c));
+        #[cfg(feature = "bench")]
+        let ticks_before = tick_count;
+        for _ in 0..ticks {
+            #[cfg(feature = "bench")]
+            let sim_start = bench_now();
+            #[cfg(feature = "motion-bench")]
+            let sample = motion_sample(tick_count);
+            #[cfg(feature = "bench")]
+            {
+                observed_buttons = sample.0.bits();
+            }
+            _tick = pad.map(sample.0, sample.1, sample.2, DT);
+            if let Some(g) = &mut game {
+                #[cfg(feature = "combat-bench")]
+                {
+                    _tick.sim = combat.input(&mut g.sim);
+                    _tick.look_dx = 0.0;
+                    _tick.look_dy = 0.0;
+                }
+                #[cfg(not(feature = "character-bench"))]
+                {
+                    for bot in &mut g.sim.bots {
+                        bot.muzzle_local = officers.as_ref().unwrap().asset.attack_origin();
+                    }
+                    g.sim.apply_look(_tick.look_dx, _tick.look_dy);
+                    g.sim.tick(&g.world.map().collision, DT, &_tick.sim);
+                }
+                #[cfg(feature = "character-bench")]
+                {
+                    g.sim.time += DT;
+                }
+            } else {
+                menu_time += DT as f64;
+            }
+            #[cfg(feature = "bench")]
+            let after_sim = bench_now();
+            #[cfg(feature = "bench")]
+            if let Some(g) = &game {
+                bench.observe_events(&g.sim);
+            }
 
-        // UI core frame.
+            // Preserve one complete guest turn and UI tick per simulation step.
+            let ok = match &mut game {
+                Some(g) => strike::dispatch(ctx, global, &mut g.sim),
+                None => strike::dispatch_menu(ctx, global, menu_time),
+            };
+            if !ok {
+                log_exception(ctx);
+            }
+            #[cfg(feature = "bench")]
+            let after_dispatch = bench_now();
+            pocketjs_psp::offload::frame(sample.0.bits(), (sample.1 as u32) << 8 | sample.2 as u32);
+            let mut args = [JS_NewInt32(ctx, sample.0.bits() as i32)];
+            let r = JS_Call(ctx, frame_fn, global, 1, args.as_mut_ptr());
+            if JS_ValueGetTag(r) == JS_TAG_EXCEPTION {
+                log_exception(ctx);
+            }
+            JS_FreeValue(ctx, r);
+            #[cfg(feature = "bench")]
+            let after_js = bench_now();
+            host::drain_jobs(rt);
+            strike::drain(|cmd| match &mut game {
+                Some(g) => g.sim.apply(cmd, 0),
+                None => openstrike_core::sim::retain_configuration(&mut boot_cfg, cmd),
+            });
+            #[cfg(feature = "character-bench")]
+            if let Some(g) = &mut game {
+                character_probe::stage(&mut g.sim, tick_count as u32);
+            }
+            strike::drain_host(|c| host_cmd = Some(c));
+            ffi::ui().tick();
+            #[cfg(feature = "bench")]
+            {
+                tick_count += 1;
+                segments[0] += after_sim - sim_start;
+                segments[1] += after_dispatch - after_sim;
+                segments[2] += after_js - after_dispatch;
+                segments[3] += bench_now() - after_js;
+            }
+            // A transition applies after this frame; do not tick the old world again.
+            if host_cmd.is_some() {
+                break;
+            }
+        }
+        // Match the PocketJS PSP host's arena-pressure cycle collection.
+        // Component unmounts release owners but can leave JS reference cycles.
+        // Collect outside guest turns only after fresh arena growth; ordinary
+        // frames reuse free-list blocks and do not run a collector.
+        let bump = pocketjs_psp::arena::stats().bump_bytes;
+        if bump > last_gc_bump.saturating_add(256 * 1024) {
+            JS_RunGC(rt);
+            last_gc_bump = pocketjs_psp::arena::stats().bump_bytes;
+        }
+        #[cfg(feature = "bench")]
+        let ui_draw_start = bench_now();
         let ui = ffi::ui();
-        ui.tick();
         let (words_ptr, words_len) = {
             let dl = ui.draw();
             (dl.words.as_ptr(), dl.words.len())
         };
 
+        #[cfg(feature = "bench")]
+        {
+            bench.ui_draw_sum += bench_now() - ui_draw_start;
+        }
+
         // Pipelined present: wait out frame N-1, show it, then record N.
         #[cfg(feature = "bench")]
-        let bench_after_ui = bench_now();
-        #[cfg(feature = "bench")]
-        let bench_before_sync = bench_after_ui;
+        let bench_before_sync = bench_now();
         sys::sceGuSync(GuSyncMode::Finish, GuSyncBehavior::Wait);
         #[cfg(feature = "bench")]
         let bench_after_sync = bench_now();
         // A completed frame may already be inside a NEW blanking interval.
         // Waiting for another start would discard that refresh opportunity.
-        // The vcount guard still permits at most one simulation/present per
+        // The vcount guard still permits at most one present per
         // refresh when a very cheap frame finishes within the same blank.
         let current_vcount = sys::sceDisplayGetVcount();
         if current_vcount == last_present_vcount {
@@ -320,7 +469,8 @@ unsafe fn run() {
         pool.reset();
 
         sys::sceGuStart(GuContextType::Direct, host::list_ptr());
-        let cam = match &game {
+        #[allow(unused_mut)]
+        let mut cam = match &game {
             Some(g) => Camera3d {
                 pos: g.sim.player.eye_interpolated(1.0),
                 yaw: g.sim.player.yaw,
@@ -333,71 +483,156 @@ unsafe fn run() {
                 ..Camera3d::default()
             },
         };
+        #[cfg(feature = "map-bench")]
+        map_probe.camera(frame_count.saturating_sub(300), &mut cam);
         pocket3d_gu::begin_3d(&cam);
-        sky::draw(&mut pool, &cam, &sky_params);
+        let authored_sky = game
+            .as_ref()
+            .and_then(|g| g.world.map().sky)
+            .map(|s| sky::SkyParams {
+                zenith: s.zenith,
+                horizon: s.horizon,
+            });
+        sky::draw(
+            &mut pool,
+            &cam,
+            authored_sky.as_ref().unwrap_or(&sky_params),
+        );
         #[cfg(feature = "bench")]
         let mut actor_us = 0;
         if let Some(g) = &mut game {
+            #[cfg(feature = "bench")]
+            let world_start = bench_now();
             g.world.draw(&mut pool, &cam);
             #[cfg(feature = "bench")]
+            {
+                bench.texture_memory_bytes = g.world.texture_memory_bytes;
+                bench.geometry_memory_bytes = g.world.geometry_memory_bytes;
+                bench.world_sum += bench_now() - world_start;
+                bench.vis_sum += g.world.last_visibility_us as u64;
+                bench.submit_sum += g.world.last_submission_us as u64;
+            }
+            #[cfg(feature = "bench")]
             let actor_start = bench_now();
-            officers.draw(&mut pool, &g.sim.bots, &cam);
+            officers
+                .as_mut()
+                .unwrap()
+                .draw(&mut pool, &g.sim.bots, &cam);
             #[cfg(feature = "bench")]
             {
                 actor_us = bench_now() - actor_start;
             }
-            present::draw_effects(&mut pool, &g.sim, &cam);
-            present::draw_viewmodel(&mut pool, &rifle, &g.sim);
+            effects.prepare(&g.sim, &cam);
+            present::draw_projectiles(&mut pool, &projectile_mesh, &g.sim);
+            effects.draw_world(&mut pool);
+            present::draw_viewmodel(&mut pool, &rifle, &g.sim, &effects);
         }
         pocket3d_gu::end_3d();
         // The JSX HUD, unchanged from every other PocketJS host.
+        #[cfg(feature = "bench")]
+        let ui_ge_start = bench_now();
         ge::render_over(ffi::ui(), core::slice::from_raw_parts(words_ptr, words_len));
+        #[cfg(feature = "bench")]
+        {
+            bench.ui_ge_sum += bench_now() - ui_ge_start;
+            let hud_us = strike::take_hud_time();
+            bench.hud_script_sum += hud_us;
+            bench.hud_script_max = bench.hud_script_max.max(hud_us);
+        }
         sys::sceGuFinish();
 
         #[cfg(feature = "bench")]
         {
-            let (faces, tris) = match &game {
-                Some(g) => (g.world.last_faces, g.world.last_tris),
-                None => (0, 0),
+            let (faces, tris, indices) = match &game {
+                Some(g) => (g.world.last_faces, g.world.last_tris, g.world.last_indices),
+                None => (0, 0, 0),
             };
-            bench.observe(mask as u32, &_tick, game.as_ref().map(|g| &g.sim));
+            bench.observe(observed_buttons, &_tick, game.as_ref().map(|g| &g.sim));
+            bench.sim_ticks += (tick_count - ticks_before) as u32;
             bench.record(
                 frame_count,
                 bench_t0,
-                &[
-                    ("sim", bench_after_sim),
-                    ("dispatch", bench_after_dispatch),
-                    ("js", bench_after_js),
-                    ("ui", bench_after_ui),
-                ],
+                &segments,
                 bench_before_sync,
                 bench_after_sync,
                 bench_after_present,
                 faces,
                 tris,
+                indices,
                 actor_us,
-                if game.is_some() { officers.visible } else { 0 },
+                if game.is_some() {
+                    officers.as_ref().unwrap().visible
+                } else {
+                    0
+                },
+                officers.as_ref().unwrap().asset.triangle_count(),
             );
         }
 
+        let transition = host_cmd.is_some();
+        if transition {
+            // The GE still borrows this frame's world textures/vertices. Finish
+            // before freeing a world or overwriting the shared map buffer.
+            sys::sceGuSync(GuSyncMode::Finish, GuSyncBehavior::Wait);
+        }
         // World lifecycle intents, applied OUTSIDE all world borrows (the
         // presented frame already showed the menu's LOADING state).
         match host_cmd {
-            Some(strike::HostCmd::LoadMap(i)) if game.is_none() => {
+            Some(strike::HostCmd::LoadMap {
+                map: i,
+                mod_index,
+                crossplay,
+            }) if game.is_none() => {
                 if let Some(name) = map_names.get(i) {
-                    match maps::load(name, map_buf_ptr, map_buf_cap, &boot_cfg) {
-                        Ok(g) => game = Some(g),
+                    match maps::load(
+                        name,
+                        map_buf_ptr,
+                        map_buf_cap,
+                        texture_ptr,
+                        texture_cap,
+                        &boot_cfg,
+                    ) {
+                        Ok(mut g) => {
+                            let pack = openstrike_mods::get(mod_index).unwrap();
+                            if active_mod != mod_index {
+                                // The GE has finished. Release the old cache before
+                                // allocating another full-detail character cache.
+                                drop(officers.take());
+                                officers = Some(present::CharacterRenderer::new(pack.character()));
+                                rifle = present::build_viewmodel(pack);
+                                projectile_mesh = present::build_projectile(pack);
+                                active_mod = mod_index;
+                            }
+                            pack.configure(&mut g.sim);
+                            if crossplay {
+                                g.sim.bots.clear();
+                                g.sim.network =
+                                    Some(openstrike_core::net::Client::new(g.map_key.clone()));
+                            }
+                            game = Some(g);
+                            #[cfg(feature = "bench")]
+                            {
+                                bench.map_loads += 1;
+                            }
+                        }
                         Err(e) => psp::dprintln!("[openstrike] loadMap failed: {}", e),
                     }
                 }
             }
             Some(strike::HostCmd::ToMenu) => {
+                #[cfg(feature = "bench")]
+                {
+                    bench.menu_returns += 1;
+                }
                 game = None; // drops every borrow of the map buffer
                 menu_time = 0.0;
             }
             _ => {}
         }
 
+        if transition {
+            clock.reset(sys::sceKernelGetSystemTimeWide() as u64);
+        }
         frame_count = frame_count.wrapping_add(1);
     }
 }
@@ -416,7 +651,13 @@ fn bench_now() -> u64 {
 
 #[cfg(feature = "bench")]
 struct Bench {
+    trace: Vec<[u32; 8]>,
+    deferred: Vec<alloc::string::String>,
+    complete: bool,
     frames: u32,
+    sim_ticks: u32,
+    map_loads: u32,
+    menu_returns: u32,
     window: u32,
     work_sum: u64,
     max_work: u64,
@@ -424,10 +665,20 @@ struct Bench {
     max_gpu: u64,
     faces_sum: u64,
     tris_sum: u64,
+    indices_sum: u64,
     seg_sums: [u64; 4],
     /// Breakdown of the frame that set max_work: 4 segments + the
     /// uninstrumented rest (draw recording, input, GE list build).
     max_segs: [u64; 5],
+    hud_script_sum: u64,
+    hud_script_max: u64,
+    ui_draw_sum: u64,
+    ui_ge_sum: u64,
+    vis_sum: u64,
+    submit_sum: u64,
+    world_sum: u64,
+    texture_memory_bytes: usize,
+    geometry_memory_bytes: usize,
     actor_sum: u64,
     actor_max: u64,
     actor_count_sum: u64,
@@ -441,6 +692,7 @@ struct Bench {
     buttons_or: u32,
     analog_frames: u32,
     movement_frames: u32,
+    airborne_frames: u32,
     look_frames: u32,
     reload_frames: u32,
     ammo_min: u32,
@@ -472,8 +724,26 @@ impl Bench {
                 }
             }
         }
+        Self::fresh()
+    }
+
+    fn fresh() -> Self {
+        Self::with_buffers(
+            Vec::with_capacity(if cfg!(feature = "map-bench") { 6000 } else { 0 }),
+            (0..20)
+                .map(|_| alloc::string::String::with_capacity(4096))
+                .collect(),
+        )
+    }
+    fn with_buffers(trace: Vec<[u32; 8]>, deferred: Vec<alloc::string::String>) -> Self {
         Self {
+            trace,
+            deferred,
+            complete: false,
             frames: 0,
+            sim_ticks: 0,
+            map_loads: 0,
+            menu_returns: 0,
             window: 0,
             work_sum: 0,
             max_work: 0,
@@ -481,8 +751,18 @@ impl Bench {
             max_gpu: 0,
             faces_sum: 0,
             tris_sum: 0,
+            indices_sum: 0,
             seg_sums: [0; 4],
             max_segs: [0; 5],
+            hud_script_sum: 0,
+            hud_script_max: 0,
+            ui_draw_sum: 0,
+            ui_ge_sum: 0,
+            vis_sum: 0,
+            submit_sum: 0,
+            world_sum: 0,
+            texture_memory_bytes: 0,
+            geometry_memory_bytes: 0,
             actor_sum: 0,
             actor_max: 0,
             actor_count_sum: 0,
@@ -496,6 +776,7 @@ impl Bench {
             buttons_or: 0,
             analog_frames: 0,
             movement_frames: 0,
+            airborne_frames: 0,
             look_frames: 0,
             reload_frames: 0,
             ammo_min: u32::MAX,
@@ -536,6 +817,7 @@ impl Bench {
         self.analog_frames += moving as u32;
         self.look_frames += (input.look_dx != 0.0 || input.look_dy != 0.0) as u32;
         if let Some(sim) = sim {
+            self.airborne_frames += (!sim.player.state.on_ground) as u32;
             let pos = sim.player.state.pos;
             if let Some(previous) = self.previous_pos {
                 let delta = pos.distance_squared(previous);
@@ -559,22 +841,33 @@ impl Bench {
         &mut self,
         abs_frame: u32,
         t0: u64,
-        segments: &[(&str, u64); 4],
+        segments: &[u64; 4],
         before_sync: u64,
         after_sync: u64,
         after_present: u64,
         faces: u32,
         tris: u32,
+        indices: u32,
         actor_us: u64,
         actors: u32,
+        actor_triangles: usize,
     ) {
+        if self.complete {
+            return;
+        }
+        if cfg!(any(feature = "map-bench", feature = "encounter-bench")) && abs_frame < 300 {
+            if abs_frame == 299 {
+                let trace = core::mem::take(&mut self.trace);
+                let deferred = core::mem::take(&mut self.deferred);
+                *self = Self::with_buffers(trace, deferred);
+            }
+            return;
+        }
         let now = bench_now();
-        let mut prev = t0;
         let mut segs = [0u64; 5];
-        for (i, (_, at)) in segments.iter().enumerate() {
-            segs[i] = at.saturating_sub(prev);
-            self.seg_sums[i] += segs[i];
-            prev = *at;
+        for (i, &duration) in segments.iter().enumerate() {
+            segs[i] = duration;
+            self.seg_sums[i] += duration;
         }
         let present = after_present.saturating_sub(before_sync);
         let work = now.saturating_sub(t0).saturating_sub(present);
@@ -585,6 +878,18 @@ impl Bench {
         } else {
             t0.saturating_sub(self.last_start)
         };
+        if cfg!(feature = "map-bench") {
+            self.trace.push([
+                abs_frame,
+                interval as u32,
+                work as u32,
+                (before_sync - t0) as u32,
+                gpu as u32,
+                (after_present - after_sync) as u32,
+                (now - after_present) as u32,
+                tris,
+            ]);
+        }
         self.last_start = t0;
         if interval > 0 {
             self.frame_sum += interval;
@@ -604,8 +909,10 @@ impl Bench {
             self.max_segs = segs;
             self.max_work_frame = abs_frame;
         }
-        // Spike forensics: any frame past ~1.5x budget logs itself with its
-        // absolute frame index so it can be correlated with the input script.
+        // Explicit forensics only: writing both USB and Memory Stick for
+        // every slow frame adds stalls and simulation catch-up to the next
+        // frame. Normal benchmarks retain the 300-frame summary and maxima.
+        #[cfg(feature = "bench-spikes")]
         if work > 25_000 {
             let line = alloc::format!(
                 "{{\"spike_frame\":{},\"work_us\":{},\"segs_us\":[{},{},{},{},{}]}}\n",
@@ -638,24 +945,38 @@ impl Bench {
         self.max_gpu = self.max_gpu.max(gpu);
         self.faces_sum += faces as u64;
         self.tris_sum += tris as u64;
+        self.indices_sum += indices as u64;
         if self.frames < 300 {
             return;
         }
         let n = self.frames as u64;
         self.window += 1;
         let arena = unsafe { pocketjs_psp::arena::stats() };
+        let (arena_free, _) = unsafe { pocketjs_psp::arena::debug_free() };
+        let js_live = unsafe { pocketjs_psp::qjs_alloc::stats().live_requested };
         self.work_times.sort_unstable();
         self.frame_times.sort_unstable();
-        let line = alloc::format!(
-            "{{\"window\":{},\"frames\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"max_segs_us\":[{},{},{},{},{}],\"actor_probe\":{},\"avg_actor_us\":{},\"max_actor_us\":{},\"avg_actors\":{},\"max_actors\":{},\"actor_triangles_each\":{},\"observed_fps_milli\":{},\"p95_frame_us\":{},\"p99_frame_us\":{},\"p95_work_us\":{},\"late_frames\":{},\"input\":{{\"buttons_or\":{},\"analog_frames\":{},\"movement_frames\":{},\"look_frames\":{},\"ammo_min\":{},\"ammo_max\":{},\"reloading_frames\":{}}},\"actor_clip_frames\":[{},{},{},{},{},{},{}],\"combat_probe\":{},\"events\":{{\"hits\":{},\"kills\":{},\"damage\":{},\"deaths\":{},\"resets\":{},\"shots\":{}}},\"reused_vblanks\":{},\"missed_vblanks\":{},\"max_work_frame\":{}}}\n",
+        use core::fmt::Write;
+        let deferred = cfg!(any(feature = "map-bench", feature = "encounter-bench"));
+        let mut line = if deferred {
+            core::mem::take(&mut self.deferred[self.window as usize - 1])
+        } else {
+            alloc::string::String::new()
+        };
+        let _ = write!(line,
+            "{{\"window\":{},\"frames\":{},\"sim_ticks\":{},\"map_loads\":{},\"menu_returns\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_indices\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"arena_total_free_bytes\":{},\"js_live_requested_bytes\":{},\"max_segs_us\":[{},{},{},{},{}],\"actor_probe\":{},\"avg_actor_us\":{},\"max_actor_us\":{},\"avg_actors\":{},\"max_actors\":{},\"actor_triangles_each\":{},\"observed_fps_milli\":{},\"p95_frame_us\":{},\"p99_frame_us\":{},\"p95_work_us\":{},\"late_frames\":{},\"input\":{{\"buttons_or\":{},\"analog_frames\":{},\"movement_frames\":{},\"airborne_frames\":{},\"look_frames\":{},\"ammo_min\":{},\"ammo_max\":{},\"reloading_frames\":{}}},\"actor_clip_frames\":[{},{},{},{},{},{},{}],\"combat_probe\":{},\"events\":{{\"hits\":{},\"kills\":{},\"damage\":{},\"deaths\":{},\"resets\":{},\"shots\":{}}},\"reused_vblanks\":{},\"missed_vblanks\":{},\"avg_hud_script_us\":{},\"avg_ui_draw_us\":{},\"avg_ui_ge_us\":{},\"max_work_frame\":{},\"avg_world_us\":{},\"map_probe\":{},\"probe_view\":{},\"avg_visibility_us\":{},\"avg_submit_us\":{},\"texture_vram_bytes\":{},\"geometry_vram_bytes\":{},\"max_hud_script_us\":{}}}\n",
             self.window,
             n,
+            self.sim_ticks,
+            self.map_loads,
+            self.menu_returns,
             self.work_sum / n,
             self.max_work,
             self.gpu_sum / n,
             self.max_gpu,
             self.faces_sum / n,
             self.tris_sum / n,
+            self.indices_sum / n,
             self.seg_sums[0] / n,
             self.seg_sums[1] / n,
             self.seg_sums[2] / n,
@@ -663,6 +984,8 @@ impl Bench {
             arena.capacity_bytes,
             arena.bump_bytes,
             arena.tail_free_bytes,
+            arena_free,
+            js_live,
             self.max_segs[0],
             self.max_segs[1],
             self.max_segs[2],
@@ -673,7 +996,7 @@ impl Bench {
             self.actor_max,
             self.actor_count_sum / n,
             self.actor_count_max,
-            openstrike_character::triangle_count(),
+            actor_triangles,
             self.frame_samples as u64 * 1_000_000_000 / self.frame_sum.max(1),
             self.frame_times[284],
             self.frame_times[296],
@@ -682,6 +1005,7 @@ impl Bench {
             self.buttons_or,
             self.analog_frames,
             self.movement_frames,
+            self.airborne_frames,
             self.look_frames,
             if self.ammo_min == u32::MAX {
                 0
@@ -706,33 +1030,128 @@ impl Bench {
             self.events[5],
             self.reused_vblanks,
             self.missed_vblanks,
+            self.hud_script_sum / n,
+            self.ui_draw_sum / n,
+            self.ui_ge_sum / n,
             self.max_work_frame,
+            self.world_sum / n,
+            cfg!(feature = "map-bench"),
+            abs_frame.saturating_sub(300) / 600,
+            self.vis_sum / n,
+            self.submit_sum / n,
+            self.texture_memory_bytes,
+            self.geometry_memory_bytes,
+            self.hud_script_max,
         );
-        for path in [
-            b"host0:/OpenStrike-bench.jsonl\0".as_ptr(),
-            b"ms0:/OpenStrike-bench.jsonl\0".as_ptr(),
-        ] {
-            unsafe {
-                let fd = sys::sceIoOpen(
-                    path,
-                    IoOpenFlags::WR_ONLY | IoOpenFlags::CREAT | IoOpenFlags::APPEND,
-                    0o777,
-                );
-                if fd.0 >= 0 {
-                    sys::sceIoWrite(fd, line.as_ptr() as *const c_void, line.len());
-                    sys::sceIoClose(fd);
+        if cfg!(any(feature = "map-bench", feature = "encounter-bench")) {
+            self.deferred[self.window as usize - 1] = line;
+            if self.window == 20 {
+                for path in [
+                    b"host0:/OpenStrike-bench.jsonl\0".as_ptr(),
+                    b"ms0:/OpenStrike-bench.jsonl\0".as_ptr(),
+                ] {
+                    unsafe {
+                        let fd = sys::sceIoOpen(
+                            path,
+                            IoOpenFlags::WR_ONLY | IoOpenFlags::CREAT | IoOpenFlags::TRUNC,
+                            0o777,
+                        );
+                        if fd.0 < 0 {
+                            continue;
+                        }
+                        let mut ok = true;
+                        for line in &self.deferred {
+                            let mut offset = 0;
+                            while offset < line.len() {
+                                let n = sys::sceIoWrite(
+                                    fd,
+                                    line.as_ptr().add(offset).cast(),
+                                    line.len() - offset,
+                                );
+                                if n <= 0 {
+                                    ok = false;
+                                    break;
+                                }
+                                offset += n as usize;
+                            }
+                            if !ok {
+                                break;
+                            }
+                        }
+                        sys::sceIoClose(fd);
+                        if ok {
+                            break;
+                        }
+                    }
+                }
+                if !self.trace.is_empty() {
+                    unsafe {
+                        let fd = sys::sceIoOpen(
+                            b"host0:/OpenStrike-frames.bin\0".as_ptr(),
+                            IoOpenFlags::WR_ONLY | IoOpenFlags::CREAT | IoOpenFlags::TRUNC,
+                            0o777,
+                        );
+                        if fd.0 >= 0 {
+                            let bytes = core::slice::from_raw_parts(
+                                self.trace.as_ptr().cast::<u8>(),
+                                self.trace.len() * 32,
+                            );
+                            let mut off = 0;
+                            while off < bytes.len() {
+                                let n = sys::sceIoWrite(
+                                    fd,
+                                    bytes.as_ptr().add(off).cast(),
+                                    bytes.len() - off,
+                                );
+                                if n <= 0 {
+                                    break;
+                                }
+                                off += n as usize;
+                            }
+                            sys::sceIoClose(fd);
+                        }
+                    }
+                }
+                self.complete = true;
+            }
+        } else {
+            for path in [
+                b"host0:/OpenStrike-bench.jsonl\0".as_ptr(),
+                b"ms0:/OpenStrike-bench.jsonl\0".as_ptr(),
+            ] {
+                unsafe {
+                    let fd = sys::sceIoOpen(
+                        path,
+                        IoOpenFlags::WR_ONLY | IoOpenFlags::CREAT | IoOpenFlags::APPEND,
+                        0o777,
+                    );
+                    if fd.0 >= 0 {
+                        sys::sceIoWrite(fd, line.as_ptr().cast(), line.len());
+                        sys::sceIoClose(fd);
+                    }
                 }
             }
         }
         self.frames = 0;
+        self.sim_ticks = 0;
+        self.map_loads = 0;
+        self.menu_returns = 0;
         self.work_sum = 0;
         self.max_work = 0;
         self.gpu_sum = 0;
         self.max_gpu = 0;
         self.faces_sum = 0;
         self.tris_sum = 0;
+        self.indices_sum = 0;
         self.seg_sums = [0; 4];
         self.max_segs = [0; 5];
+        self.hud_script_sum = 0;
+        self.hud_script_max = 0;
+        self.ui_draw_sum = 0;
+        self.ui_ge_sum = 0;
+        self.vis_sum = 0;
+        self.submit_sum = 0;
+        self.world_sum = 0;
         self.actor_sum = 0;
         self.actor_max = 0;
         self.actor_count_sum = 0;
@@ -743,6 +1162,7 @@ impl Bench {
         self.buttons_or = 0;
         self.analog_frames = 0;
         self.movement_frames = 0;
+        self.airborne_frames = 0;
         self.look_frames = 0;
         self.reload_frames = 0;
         self.ammo_min = u32::MAX;
@@ -822,25 +1242,70 @@ unsafe fn cap_dump_frame(frame_count: u32) {
         }
         i -= 1;
     }
-    let mut top: *mut c_void = core::ptr::null_mut();
-    let mut bw: usize = 0;
-    let mut fmt = DisplayPixelFormat::Psm8888;
-    sys::sceDisplayGetFrameBuf(&mut top, &mut bw, &mut fmt, DisplaySetBufSync::Immediate);
-    let mut addr = top as u32;
-    if addr < 0x0400_0000 {
-        addr += 0x0400_0000;
-    }
-    addr |= 0x4000_0000;
     let fd = sys::sceIoOpen(
         name.as_ptr(),
         IoOpenFlags::CREAT | IoOpenFlags::WR_ONLY | IoOpenFlags::TRUNC,
         0o777,
     );
     if fd.0 >= 0 {
-        sys::sceIoWrite(fd, addr as *const c_void, 512 * 272 * 4);
+        let mut buf = alloc::vec![0u8; 512 * 4 * 16];
+        for row in (0..272).step_by(16) {
+            let rows = 16.min(272 - row);
+            let n = rows * 512 * 4;
+            if !host::read_display_rows_rgba(row, rows, &mut buf[..n]) {
+                break;
+            }
+            if sys::sceIoWrite(fd, buf.as_ptr().cast(), n) != n as i32 {
+                break;
+            }
+        }
         sys::sceIoClose(fd);
     }
     if idx + 1 == cap_n {
         sys::sceKernelExitGame();
     }
+}
+
+/// Exercise the production pad mapper by simulation tick, not render count.
+/// Two ten-second movement cycles, then quit through the HUD and load a
+/// map through the menu. Repeat after thirty seconds of simulation time.
+#[cfg(feature = "motion-bench")]
+fn motion_sample(tick: u64) -> (CtrlButtons, u8, u8) {
+    let cycle = tick % 1800;
+    if cycle >= 1200 {
+        let button = match cycle {
+            1200 => CtrlButtons::SELECT,
+            1230 => CtrlButtons::RIGHT,
+            t if (1290..1318).contains(&t)
+                && (t - 1290) % 4 == 0
+                && (t - 1290) / 4 < (tick / 1800) % openstrike_mods::PACKS.len() as u64 =>
+            {
+                CtrlButtons::DOWN
+            }
+            1260 | 1320 => CtrlButtons::CIRCLE,
+            1350 if openstrike_mods::PACKS.len() > 1 => CtrlButtons::CIRCLE,
+            _ => CtrlButtons::empty(),
+        };
+        return (button, 128, 128);
+    }
+    let t = cycle % 600;
+    let mut buttons = CtrlButtons::empty();
+    if (120..240).contains(&t) {
+        buttons |= CtrlButtons::CIRCLE;
+    }
+    if (250..254).contains(&t) {
+        buttons |= CtrlButtons::LTRIGGER;
+    }
+    if (330..400).contains(&t) {
+        buttons |= CtrlButtons::RTRIGGER;
+    }
+    if t == 420 {
+        buttons |= CtrlButtons::DOWN;
+    }
+    let ly = if t < 120 || (240..330).contains(&t) {
+        0
+    } else {
+        128
+    };
+    (buttons, 128, ly)
 }

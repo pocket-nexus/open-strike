@@ -5,12 +5,25 @@ use openstrike_core::bot::ActorClip;
 use openstrike_core::{Bot, BotState, StrikeSim};
 
 pub fn stage(sim: &mut StrikeSim, frame: u32) {
+    // Capture one selected action without rendering thousands of warmup frames.
+    // Hardware stress builds retain the full 1/3/6-actor sweep.
+    #[cfg(feature = "capture")]
+    let frame = frame.saturating_add(
+        env!("OPENSTRIKE_PSP_CHARACTER_START")
+            .parse::<u32>()
+            .unwrap_or(0),
+    );
     // Fixed camera from the loaded map's CT spawn, looking into the room.
     // One / three / six visible actors exercise separate load configurations.
     let count = match (frame / 1800) % 3 {
         0 => 1,
         1 => 3,
         _ => 6,
+    };
+    #[cfg(feature = "proximity-bench")]
+    let count = {
+        let _ = count;
+        1
     };
     while sim.bots.len() < count {
         sim.bots.push(Bot::spawn(sim.player.state.pos, 0.0));
@@ -21,6 +34,11 @@ pub fn stage(sim: &mut StrikeSim, frame: u32) {
     let forward = sim.player.forward_flat();
     let right = Vec3::new(-forward.z, 0.0, forward.x);
     let clip = ActorClip::ALL[((frame / 180) % 7) as usize];
+    #[cfg(feature = "proximity-bench")]
+    let clip = {
+        let _ = clip;
+        ActorClip::Walk
+    };
     let time = (frame % 180) as f32 / 60.0;
     for (i, bot) in sim.bots.iter_mut().enumerate() {
         let col = i % 3;
@@ -30,7 +48,11 @@ pub fn stage(sim: &mut StrikeSim, frame: u32) {
         } else {
             col as f32 - 1.0
                 + if count == 6 {
-                    if row == 0 { -0.35 } else { 0.35 }
+                    if row == 0 {
+                        -0.35
+                    } else {
+                        0.35
+                    }
                 } else {
                     0.0
                 }
@@ -44,6 +66,15 @@ pub fn stage(sim: &mut StrikeSim, frame: u32) {
                 } + row as f32 * 70.0)
             + right * shift * 45.0;
         bot.prev_pos = bot.state.pos;
+        #[cfg(feature = "proximity-bench")]
+        {
+            let distance = env!("OPENSTRIKE_PSP_PROBE_DISTANCE")
+                .parse::<f32>()
+                .unwrap_or(36.0)
+                .clamp(32.0, 400.0);
+            bot.state.pos = sim.player.state.pos + forward * distance;
+            bot.prev_pos = bot.state.pos;
+        }
         bot.yaw = sim.player.yaw + core::f32::consts::PI;
         bot.health = 100;
         bot.brain = BotState::Patrol;

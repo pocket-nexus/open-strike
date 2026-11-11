@@ -2,7 +2,7 @@
 //! Adapt the game's existing cooked maps to the desktop renderer. Texture
 //! expansion and collision parsing stay in the shared Pocket3D format reader.
 use anyhow::{Context, Result, anyhow};
-use pocket3d::bsp::{
+use pocket3d_bsp::{
     Batch, DecodedTexture, MapData, MapGeometry, WorldVertexData, cooked,
     lightmap::{LightmapAtlas, PAGE_SIZE},
     mesh::GeometryStats,

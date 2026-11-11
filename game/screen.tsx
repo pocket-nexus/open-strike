@@ -1,17 +1,26 @@
 // Shared product screen. Every native 3D host mounts this same menu/HUD over
 // its target-specific Pocket3D renderer.
 
-import { createSignal, Show } from "solid-js";
+import { createSignal, onCleanup, Show } from "solid-js";
 import Hud from "./hud.tsx";
 import MainMenu from "./menu.tsx";
 import { strike } from "./sdk.ts";
+import { hasFeature } from "@pocketjs/framework/platform";
+import Radar from "./radar.tsx";
 
 export default function OpenStrikeScreen() {
-  const [inMenu, setInMenu] = createSignal(strike.state().phase === "menu");
-  strike.onTick((state) => setInMenu(state.phase === "menu"));
+  let menu = strike.state().phase === "menu";
+  const [inMenu, setInMenu] = createSignal(menu);
+  onCleanup(strike.onTick((state) => {
+    const next = state.phase === "menu";
+    if (next !== menu) { menu = next; setInMenu(next); }
+  }));
   return (
-    <Show when={!inMenu()} fallback={<MainMenu />}>
-      <Hud />
-    </Show>
+    <>
+      <Show when={!inMenu()} fallback={<MainMenu />}>
+        <Hud />
+      </Show>
+      {hasFeature("display.auxiliary") && <Radar />}
+    </>
   );
 }

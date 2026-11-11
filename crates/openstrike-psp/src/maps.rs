@@ -6,9 +6,12 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::ffi::c_void;
+use core::mem::MaybeUninit;
 
-use openstrike_core::StrikeSim;
+mod read;
+
 use openstrike_core::sim::Command;
+use openstrike_core::StrikeSim;
 use pocket3d_bsp::cooked;
 use pocket3d_gu::WorldRenderer;
 use psp::sys::{self, IoOpenFlags};
@@ -48,10 +51,9 @@ pub unsafe fn scan() -> (Vec<String>, u32) {
             }
             let raw = &ent.d_name;
             let len = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
-            let name = core::str::from_utf8(
-                core::slice::from_raw_parts(raw.as_ptr() as *const u8, len),
-            )
-            .unwrap_or("");
+            let name =
+                core::str::from_utf8(core::slice::from_raw_parts(raw.as_ptr() as *const u8, len))
+                    .unwrap_or("");
             // FAT-backed roots report 8.3-fitting names UPPERCASE
             // (DE_DUST2.P3D); every target filesystem here is
             // case-insensitive, so normalize to lowercase throughout.
@@ -76,11 +78,18 @@ pub unsafe fn scan() -> (Vec<String>, u32) {
 
 /// Load `<root>/maps/<name>.p3d` into the shared buffer and build the world:
 /// cooked view, renderer, and a fresh simulation with the boot configuration
-/// replayed. The caller guarantees no previous Game still borrows the buffer.
+/// replayed.
+///
+/// # Safety
+/// Both buffers must be valid, disjoint, 16-byte-aligned allocations for their
+/// declared capacities. No previous Game or in-flight GE command may borrow
+/// either region. They must remain alive until the returned Game is dropped.
 pub unsafe fn load(
     name: &str,
     buf_ptr: *mut u8,
     buf_cap: usize,
+    texture_ptr: *mut u8,
+    texture_cap: usize,
     boot_cfg: &[Command],
 ) -> Result<Game, &'static str> {
     let path = zpath(ROOTS[ACTIVE_ROOT], name, ".p3d");
@@ -88,27 +97,23 @@ pub unsafe fn load(
     if fd.0 < 0 {
         return Err("map file missing");
     }
-    let mut off = 0usize;
-    loop {
-        if off >= buf_cap {
-            sys::sceIoClose(fd);
-            return Err("map larger than the map buffer");
-        }
+    // The permanent allocation starts uninitialized. Only the prefix written
+    // by successful reads becomes a byte slice for the cooked-map parser.
+    let buffer = core::slice::from_raw_parts_mut(buf_ptr.cast::<MaybeUninit<u8>>(), buf_cap);
+    let loaded = read::read_into(buffer, |target| {
         let n = sys::sceIoRead(
             fd,
-            buf_ptr.add(off) as *mut c_void,
-            (buf_cap - off) as u32,
+            target.as_mut_ptr().cast::<c_void>(),
+            target.len() as u32,
         );
         if n < 0 {
-            sys::sceIoClose(fd);
-            return Err("map read failed");
+            Err("map read failed")
+        } else {
+            Ok(n as usize)
         }
-        if n == 0 {
-            break;
-        }
-        off += n as usize;
-    }
+    });
     sys::sceIoClose(fd);
+    let off = loaded?;
 
     let data: &'static [u8] = core::slice::from_raw_parts(buf_ptr, off);
     pocket3d_gu::writeback(data);
@@ -126,6 +131,17 @@ pub unsafe fn load(
     for cmd in boot_cfg {
         sim.apply(cmd.clone(), 0);
     }
-    let world = WorldRenderer::new(map);
-    Ok(Game { sim, world })
+    // The constructor uses the fallback count. Rebuild the initial roster
+    // after the guest's configuration, as reset_round does for later rounds.
+    sim.spawn_bots(0);
+    sim.weapon.reset();
+    // The caller also guarantees no previous renderer borrows this VRAM.
+    let texture_memory = core::slice::from_raw_parts_mut(texture_ptr, texture_cap);
+    let world = WorldRenderer::new_cached(map, texture_memory);
+    let map_key = openstrike_core::net::map_key(data)?;
+    Ok(Game {
+        sim,
+        world,
+        map_key,
+    })
 }

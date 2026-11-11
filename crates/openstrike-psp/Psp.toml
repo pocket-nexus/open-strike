@@ -1,6 +1,8 @@
 # cargo-psp EBOOT metadata (read from this crate dir at `cargo psp` time).
-# The XMB shows `title` under ICON0; PIC1 is the full-screen backdrop behind
-# the game's listing. Art lives in assets/ (built by scripts/gen-cover.ts).
+# The XMB shows `title` beside ICON0. ICON0 is the Pocket3D app icon, read from
+# the PocketJS checkout; this repository holds no icon file. PIC1 is
+# OpenStrike's own full-screen backdrop behind the game's listing
+# (assets/PIC1.png, built by scripts/gen-cover.ts).
 title = "OpenStrike"
-xmb_icon_png = "assets/ICON0.png"
+xmb_icon_png = "../../vendor/pocketjs/engine/pocket3d/icon/psp/ICON0.PNG"
 xmb_background_png = "assets/PIC1.png"
