@@ -1,0 +1,22 @@
+# openstrike-game: the modern game. A team shooter on the same GoldSrc maps as openstrike-core, written for hosts with
+# a real-time path tracer (the ThreeRT build: Mac, iPhone, Steam Deck, AYN Thor): team deathmatch and elimination with
+# bots on both sides, five weapons with sights and recoil, grenades, sprint / crouch / slide / mantle, bodies posed by
+# IK with ragdolls, and the first-person weapon. Platform-free like the core (no renderer, no window, no audio device):
+# a host feeds it input and takes a frame to draw, the HUD's state and events to play. It needs std and a float unit;
+# the consoles keep openstrike-core.
+
+[package]
+name = "openstrike-game"
+description = "OpenStrike's modern game: movement, weapons, bots, matches, and what the screen and the speakers show of them"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+pocket3d-bsp = { workspace = true }
+glam = { workspace = true }
+anyhow = { workspace = true }
+serde_json = "1"
+# The soldiers' skeleton and clips are read from their glTF model (assets/models/Soldier.glb).
+gltf = { version = "1", default-features = false, features = ["utils", "names"] }
