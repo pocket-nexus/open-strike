@@ -39,6 +39,10 @@ function build(map: AnyMap): Mounted {
   const g = new BufferGeometry();
   g.setAttribute("position", new Float32BufferAttribute(map.collision.positions, 3));
   g.setIndex(map.collision.indices);
+  // (Normals of its own, zeros: the mesh is never drawn. Without them the frame that first syncs it computes them in
+  // script, tens of thousands of triangles at once, and on a handheld's CPU that is past a frame's 50 ms: the
+  // runtime stops the frame script ("interrupted"), as it did on the Steam Deck the first time de_dust2 was played.)
+  g.setAttribute("normal", new Float32BufferAttribute(new Float32Array(map.collision.positions.length), 3));
   const collision = new Mesh(g, new MeshStandardMaterial({ name: "collision" }));
   collision.name = "collision";
   collision.visible = false;
