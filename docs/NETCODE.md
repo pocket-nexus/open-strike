@@ -68,5 +68,5 @@ room, and server-side ray tests, are what a competitive mode would need; neither
   a tag in the world. The engine's own window (`threert-render play`) draws no HUD at all.
 - Bots (practice only) wander and shoot; they do not path-find, use cover or climb.
 - One built-in competitive map. Imported maps: `docs/MAPS.md` (no `clip` brushes, nothing moves or breaks).
-- The Maps menu is driven by keys (and a gamepad's buttons, which arrive as keys): the HUD the app draws has no rows
-  to click or tap.
+- The Maps menu is a table the app draws: its rows are clicked or tapped (the app's `hud.choose`), or chosen with the
+  keys (and a gamepad's buttons, which arrive as keys). With the pointer captured for aiming, Esc lets it go to click.

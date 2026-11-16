@@ -3,15 +3,17 @@
 // copyrighted file is read.
 //
 //   1. Importing in the game, as a player does: M opens the Maps menu, "Import from your game folder…" picks a
-//      folder (a GoldSrc game's layout: cstrike/maps/*.bsp, cstrike/*.wad), the maps found are listed, "Import all"
-//      converts them in the game a few milliseconds a frame and writes them to the store. What it wrote is what the
-//      importer's code writes in Node from the same files (the same map.json, the same GLB, the same hash).
-//   2. Practice on an imported map from the menu: the player stands on its floor, its wall stops a sprint. A new
-//      session of the game finds the map in the store (launch `map` works with it).
+//      folder (a GoldSrc game's layout, as Steam has it: Half-Life/cstrike/maps/*.bsp, the WAD in Half-Life/valve/),
+//      the maps found are listed, "Import all" converts them in the game a few milliseconds a frame and writes them
+//      to the store. The WAD is read by ranges: its directory, then only the texture the map needs. What it wrote is
+//      what the importer's code writes in Node from the same files (the same map.json, the same GLB, the same hash).
+//   2. Practice on an imported map from the menu, its rows clicked (`hud.choose`): the player stands on its floor,
+//      its wall stops a sprint. A new session of the game finds the map in the store (launch `map` works with it).
 //   3. A room opened on it from the menu names it by id and hash; a copy of the game without the map is told which
 //      map and how to import it, and is not put in the room; one with the map joins and stands on it.
 //   4. Removing it from the menu takes it off the store and out of the list; the player is put back on Foundry.
-//   5. An app without files and store: the menu says importing needs a newer ThreeRT; a pick canceled says nothing.
+//   5. An app without files and store: the menu says importing needs a newer ThreeRT. A pick that finds nothing is
+//      said as the app says it; a pick canceled says nothing.
 //   6. A developer's import bundled with the game (maps/index.ts, tools/import-bsp.ts): practice on it.
 //
 //   node tools/test-maps.ts [--api http://127.0.0.1:8933]     (part 3 needs the platform's rooms; without them it is skipped)
@@ -57,11 +59,17 @@ function quarry(floorZ: number, external: boolean, title: string): FixtureMap {
     ],
   };
 }
-const WAD_TEXTURES: FixtureTexture[] = [{ name: "quarry", width: 64, height: 64, pixels: pixels(64, 64, (x, y) => 80 + ((x >> 3) + (y >> 3)) % 2 * 80), palette: palette(210, 200, 180) }];
+// The quarry's floor, and twenty textures no map here uses (a WAD is read by ranges: none of them is read).
+const WAD_TEXTURES: FixtureTexture[] = [
+  ...Array.from({ length: 10 }, (_, k): FixtureTexture => ({ name: `unused_a${k}`, width: 128, height: 128, pixels: pixels(128, 128, (x) => (x + k) & 255), palette: palette(100, 100, 100) })),
+  { name: "quarry", width: 64, height: 64, pixels: pixels(64, 64, (x, y) => 80 + ((x >> 3) + (y >> 3)) % 2 * 80), palette: palette(210, 200, 180) },
+  ...Array.from({ length: 10 }, (_, k): FixtureTexture => ({ name: `unused_b${k}`, width: 128, height: 128, pixels: pixels(128, 128, (x, y) => (y + k) & 255), palette: palette(100, 100, 100) })),
+];
 
 const tmp = mkdtempSync(join(tmpdir(), "os-test-maps-"));
 const game = join(tmp, "Half-Life");
 mkdirSync(join(game, "cstrike/maps"), { recursive: true });
+mkdirSync(join(game, "valve"), { recursive: true });
 const files = {
   quarry: buildBsp(quarry(FLOOR_Z, true, "Test Quarry")),
   yard: buildBsp(quarry(40, false, "Test Yard")),
@@ -69,7 +77,7 @@ const files = {
 };
 writeFileSync(join(game, "cstrike/maps/os_quarry.bsp"), files.quarry);
 writeFileSync(join(game, "cstrike/maps/os_yard.bsp"), files.yard);
-writeFileSync(join(game, "cstrike/os_test.wad"), files.wad);
+writeFileSync(join(game, "valve/os_test.wad"), files.wad);
 writeFileSync(join(game, "cstrike/readme.txt"), "not a map");
 // What the importer's code makes of the same files in Node.
 const expected = convertBsp(parseBsp(files.quarry, "os_quarry.bsp"), { id: "os_quarry", wads: [parseWad(files.wad, "os_test.wad")], source: "os_quarry.bsp", glb: "user:maps/os_quarry/map.glb" });
@@ -106,7 +114,7 @@ try {
   check((await report(a)).library === "ready" && a.hud().items?.some((i: any) => i.text === "M: maps"), "the HUD says where the maps are (M)");
   await press(a, "M");
   let m = await menu(a);
-  check(m.open && m.items[0]?.type === "table" && m.items[0].title === "Maps" && m.items[0].rows[0][0] === "Foundry", `M opens the Maps menu: ${m.items[0]?.rows.map((r: any[]) => r[0]).join(" | ")}`);
+  check(m.open && m.items[0]?.type === "table" && m.items[0].selectable === true && m.items[0].id === "maps" && m.items[0].title === "Maps" && m.items[0].rows[0][0] === "Foundry", `M opens the Maps menu: ${m.items[0]?.rows.map((r: any[]) => r[0]).join(" | ")}`);
   check(m.items.some((i: any) => /Uses your own copy; stays on this device/.test(i.text ?? "")), "it says imported maps stay on this device");
   check(await choose(a, /^Import from your game folder/), "Import from your game folder…");
   check(await world.until(async () => /maps found/.test((await menu(a)).items[0]?.title ?? ""), 5, 2), "the folder is picked (files.pick), the maps in it listed");
@@ -123,7 +131,8 @@ try {
   check(imported && r1.imports.every((i: any) => i.ok), `both are imported in the game: ${r1.imports.map((i: any) => `${i.id} ${i.ms} ms over ${i.frames} frames (longest step ${i.longest} ms)${i.error ? ` ${i.error}` : ""}`).join(", ")}`);
   check(sawBar, "the HUD shows the import's progress while it runs");
   check(r1.imports.every((i: any) => i.longest < 40), `no frame waits long on it (longest step ${Math.max(...r1.imports.map((i: any) => i.longest))} ms)`);
-  check(a.files!.seen["files.read"] === 3, `the two maps and the one WAD are read, once each (${a.files!.seen["files.read"]} reads)`);
+  const wadRead = a.files!.bytesRead - files.quarry.length - files.yard.length;
+  check(a.files!.seen["files.read"] === 5 && wadRead > 0 && wadRead < files.wad.length / 10, `the two maps are read, and of the WAD (in valve/, by its name) its header, its directory and the one texture: ${a.files!.seen["files.read"]} reads, ${wadRead} of its ${files.wad.length} bytes`);
   const listed = a.files!.list("maps/").map((e) => e.path);
   check(JSON.stringify(listed) === JSON.stringify(["maps/os_quarry/map.glb", "maps/os_quarry/map.json", "maps/os_yard/map.glb", "maps/os_yard/map.json"]), `the store holds them: ${listed.join(", ")}`);
   const json = readFileSync(join(store, "maps/os_quarry/map.json"), "utf8");
@@ -134,11 +143,14 @@ try {
   // ---- 2. practice on it, from the menu ----
   if (!(await menu(a)).open) await press(a, "M");
   await press(a, "Backspace");
-  check(await choose(a, "Test Quarry"), "the map is chosen in the list");
   m = await menu(a);
-  check(JSON.stringify(m.items[0]?.rows.map((r: any[]) => r[0])) === JSON.stringify(["Practise here", "Open a new room here", "Remove from this device", "Back"]), `what can be done with it: ${m.items[0]?.rows.map((r: any[]) => r[0]).join(" | ")}`);
-  await press(a, "Enter");
-  check(await world.until(async () => { const r = await report(a); return r.map === "os_quarry" && r.status === "practice" && r.me.alive; }, 5), "Practise here: practice on the imported map");
+  const row = m.items[0]?.rows.findIndex((r: any[]) => r[0] === "Test Quarry");
+  a.choose("maps", row);
+  await world.frames(2);
+  m = await menu(a);
+  check(JSON.stringify(m.items[0]?.rows.map((r: any[]) => r[0])) === JSON.stringify(["Practise here", "Open a new room here", "Remove from this device", "Back"]), `a click on its row: what can be done with it: ${m.items[0]?.rows.map((r: any[]) => r[0]).join(" | ")}`);
+  a.choose("maps", 0);
+  check(await world.until(async () => { const r = await report(a); return r.map === "os_quarry" && r.status === "practice" && r.me.alive; }, 5), "a click on Practise here: practice on the imported map");
   await world.run(0.6);
   let r = await report(a);
   check(!(await menu(a)).open && r.grounded && Math.abs(r.at[1] - FLOOR - MOVE.skin) < 3e-3, `the player stands on its floor (y ${r.at[1].toFixed(3)}: ${FLOOR} m up)`);
@@ -221,12 +233,19 @@ try {
   noErrors(d);
   await d.quit();
   world.remove(d);
-  const e = world.add(await App.start(bundle, { practice: true, bots: 0, name: "Eve" }, { files: { store, picks: [] } }));
+  const empty = join(tmp, "Empty");
+  mkdirSync(join(empty, "cstrike"), { recursive: true });
+  writeFileSync(join(empty, "cstrike/readme.txt"), "no maps");
+  const e = world.add(await App.start(bundle, { practice: true, bots: 0, name: "Eve" }, { files: { store, picks: [empty] } }));
   await world.until(async () => (await report(e)).status === "practice", 10);
   await press(e, "M");
   await choose(e, /^Import from your game folder/);
   await world.frames(10);
-  check(e.files!.seen["files.pick"] === 1 && (await menu(e)).items[0]?.title === "Maps" && !(await report(e)).notice2, "a pick the player cancels changes nothing");
+  const said = (await report(e)).notice2 ?? "";
+  check(e.files!.seen["files.pick"] === 1 && /^Nothing in Empty/.test(said) && (await menu(e)).items.some((i: any) => i.text === said), `a pick that finds nothing: the menu says what the app said ("${said}")`);
+  await choose(e, /^Import from your game folder/);
+  await world.frames(10);
+  check(e.files!.seen["files.pick"] === 2 && (await menu(e)).items[0]?.title === "Maps" && (await report(e)).notice2 === said, "a pick the player cancels changes nothing");
   noErrors(e);
   await e.quit();
   world.remove(e);

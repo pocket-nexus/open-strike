@@ -14,26 +14,32 @@ Units are metres, Y is up, a player is 1.8 m tall and 0.6 m wide, steps up to 0.
 
 ## Imported maps
 
-OpenStrikeRT ships only maps made for it. The classic GoldSrc maps (Counter-Strike 1.x, Half-Life) are copyrighted,
+OpenStrike ships only maps made for it. The classic GoldSrc maps (Counter-Strike 1.x, Half-Life) are copyrighted,
 so they are never part of the package or of a published version. A player who owns the game brings their own copy.
 
 ### Importing in the game
 
 In the game, **M** opens the Maps menu: every map this copy of the game has, and "Import from your game folder…".
 
-1. The player chooses a folder: the game's own (`Half-Life`, or `cstrike` / `valve` in it). The app shows its own
-   folder picker; the game sees only the `.bsp`, `.wad` and `.rad` files under the folder the player chose (the
-   engine's `files.pick`, docs/RUNTIME.md "Files" in the engine), nothing else of the disk.
+1. The player chooses a folder: the game's own (`Half-Life`, or `cstrike` / `valve` in it; on a Steam Deck in Game
+   Mode, `Half-Life` under `steamapps/common`). The app shows its own folder picker; the game sees only the `.bsp`,
+   `.wad` and `.rad` files under the folder the player chose, as many levels down as the app looks (the engine's
+   `files.pick`, docs/RUNTIME.md "Files" in the engine), nothing else of the disk. A folder with none of them is a
+   failed pick, and the menu shows the app's sentence about it.
 2. The menu lists the maps found (`cstrike/maps/de_dust2.bsp`, ...). The player imports one, or all of them.
 3. The game converts each map **inside the game**: the same converter as the developer's tool below (`src/import/`,
    plain TypeScript), a few milliseconds a frame so the picture keeps running, with its progress at the bottom of the
-   HUD. It reads the map, then the WADs the map names (from the folder: next to the map, one directory up, or
-   anywhere in it by name), and a `lights.rad` lying next to them.
+   HUD. It reads the map, then the WADs the map names (from the folder: next to the map, in its game's directory
+   one up, or anywhere in it by name, so `cstrike/maps/de_dust2.bsp` finds `valve/halflife.wad`), and a `lights.rad`
+   lying next to them. A WAD is read by ranges: its header and directory, then only the textures the map lacks
+   (halflife.wad is 38 MB; a map needs a megabyte or two of it). An app from before ranged reads sends the whole
+   file, which is then read once.
 4. The result goes into the app's store for this game, on this device: `maps/<id>/map.glb`, then
    `maps/<id>/map.json` (whose `glb` is `user:maps/<id>/map.glb`, the store's own asset URI). From then on the map is
    in the menu, in every session, until the player removes it there ("Remove from this device").
 
-From the menu the player practises on a map against bots, or opens a new room on it. The id is the file's name in
+From the menu (a row is clicked or tapped, or chosen with the keys) the player practises on a map against bots, or
+opens a new room on it. The id is the file's name in
 lower case (`de_dust2`); a map whose name is a built-in map's gets `_imported` after it. Importing the same file again
 replaces the map; the hash stays the same.
 
@@ -48,9 +54,13 @@ maps and rooms work as before.
 
 How long it takes, on an M-series Mac, in the engine's runtime (QuickJS) at 60 frames a second
 (`node tools/time-import.ts <folder> de_dust2 de_inferno cs_office`): de_dust2 1.6 s (0.8 s of work spread over
-88 frames), de_inferno 3.5 s (2.0 s of work), cs_office 3.5 s (1.9 s). The same conversion in Node
-(`tools/import-bsp.ts`) takes 0.3 to 0.5 s. The longest single slice is about 20 ms; the frame on which a large WAD
-arrives (halflife.wad, 38 MB, as one message) takes about 0.1 s.
+91 frames), de_inferno 3.4 s (2.1 s of work), cs_office 3.2 s (1.8 s). The same conversion in Node
+(`tools/import-bsp.ts`) takes 0.3 to 0.5 s. The longest single slice is about 20 ms, and no frame of the three
+imports took more than 30 ms. All three read 14 MB of the folder, 13 MB of it the maps themselves.
+
+While developing (`threert dev`), the store is `~/.threert/store/dev/<project id>/`: the imported maps are there,
+under `maps/`, and deleting that directory forgets them. `threert-render play --store <dir>` keeps them where it is
+told (default `<assets>/.threert/store`).
 
 ### Importing as a developer (a remix)
 

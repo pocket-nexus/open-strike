@@ -1,4 +1,4 @@
-# Openstrike Rt — a ThreeRT game
+# OpenStrike — a ThreeRT game
 
 ThreeRT path-traces three.js-style scene code in real time. This project is one game: `game.ts` (entry in
 `threert.config.json`). The same file runs natively (ThreeRT for macOS / iPhone: every light traced) and as three.js in
@@ -51,11 +51,15 @@ Every command takes `--json`. `threert status` says what is open, the frame rate
   (`https://<name>.threert.app`). It needs `threert login` once, done by the person in a browser. Without questions:
   `threert publish --yes --name <name> --summary "…"`. Publish only when the person asks for it.
 
-## This project (OpenStrikeRT)
+## This project (OpenStrike)
 
 The notes above are the ThreeRT CLI's, for any project. This one is larger than a single file: `game.ts` is the
-entry and the frame, the rest is in `src/` (README.md "How it is put together"). Numbers live in `src/config.ts`.
+entry and the frame, the rest is in `src/` (docs/DEVELOPING.md "How it is put together"; the netcode is
+docs/NETCODE.md). Numbers live in `src/config.ts`.
 
+- Ports: `ports/pocket3d` is a port of this game to other runtimes. The game here is the canonical one: its rules,
+  tables and maps are decided here and the ports follow. Game work does not change `ports/`; see ThreeRT's
+  docs/PORTS.md for how ports follow the game.
 - Where ThreeRT is: `node tools/setup.ts [--engine <engine checkout>] [--sdk <ThreeRT SDK or client checkout>]`
   records it in `.threert/` (never committed) and writes `.threert/tsconfig.paths.json`, which `tsconfig.json`
   extends. `THREERT_ENGINE` / `THREERT_SDK` override it for one run. No local path goes into a committed file.

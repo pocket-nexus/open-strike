@@ -1,8 +1,9 @@
 // The Maps menu: every map this copy of the game has, what to do with one (practise on it, open a room on it, take an
 // imported one off this device), and importing maps from the player's own copy of Counter-Strike or Half-Life
-// (src/import/). Drawn by the app from the HUD schema: a table whose highlighted row is the choice, lines of help under
-// it. Keys: M opens and closes it, Up / Down (W / S, the wheel) choose, Enter (Space, a click while the pointer is
-// captured) takes the choice, Backspace (Left, Escape) goes back. A gamepad's buttons come as the keys they stand for.
+// (src/import/). Drawn by the app from the HUD schema: a selectable table (a click or a tap on a row chooses it: the
+// app's `hud.choose`) whose highlighted row is the keys' choice, lines of help under it. Keys: M opens and closes it,
+// Up / Down (W / S, the wheel) choose, Enter (Space, a click while the pointer is captured) takes the choice,
+// Backspace (Left, Escape) goes back. A gamepad's buttons come as the keys they stand for.
 //
 // While it is open the player stands still and does not shoot: the keys are the menu's.
 import type { HudItem } from "@threert/gameplay";
@@ -21,6 +22,8 @@ interface Row { cells: (string | number)[]; act: () => MenuAction | void; dim?: 
 /** Rows shown at once; a longer list scrolls with the choice. */
 const PAGE = 11;
 const COPYRIGHT = "Uses your own copy; stays on this device";
+/** The table's id in the HUD (what the app's `hud.choose` names). */
+export const MENU_TABLE = "maps";
 
 export class Menu {
   open = false;
@@ -30,6 +33,9 @@ export class Menu {
   /** The map being played (marked in the list), and whether the player is in a room. */
   current = "";
   online = false;
+  /** The first row shown (the list scrolls), and a row the player clicked or tapped since the last frame. */
+  private first = 0;
+  private clicked: number | null = null;
 
   constructor(lib: Library) {
     this.lib = lib;
@@ -42,7 +48,12 @@ export class Menu {
     this.sel = Math.max(0, maps().findIndex((m) => m.id === this.current));
   }
 
-  /** Reads the frame's keys; returns what the player chose to do, if anything. */
+  /** The app's `hud.choose`: the player clicked or tapped `row` of the table `item` (taken in the next frame). */
+  choose(item: unknown, row: unknown): void {
+    if ((item === MENU_TABLE || typeof item === "number") && typeof row === "number" && Number.isInteger(row) && row >= 0 && this.open) this.clicked = this.first + row;
+  }
+
+  /** Reads the frame's keys (and a row clicked); returns what the player chose to do, if anything. */
   update(input: Input): MenuAction | null {
     if (input.pressed("M")) {
       if (this.open) this.open = false;
@@ -59,7 +70,10 @@ export class Menu {
       this.back();
       return null;
     }
-    const choose = input.pressed("Enter") || input.pressed("Space") || input.pressed("Right") || (input.captured && input.pressed("Mouse0"));
+    const clicked = this.clicked;
+    this.clicked = null;
+    if (clicked !== null && clicked < rows.length) this.sel = clicked;
+    const choose = clicked !== null || input.pressed("Enter") || input.pressed("Space") || input.pressed("Right") || (input.captured && input.pressed("Mouse0"));
     if (!choose) return null;
     const action = rows[Math.min(this.sel, rows.length - 1)]?.act();
     if (action) this.open = false;
@@ -137,18 +151,18 @@ export class Menu {
     if (!this.open) return [];
     const rows = this.rows();
     this.sel = Math.max(0, Math.min(this.sel, rows.length - 1));
-    const first = Math.max(0, Math.min(this.sel - Math.floor(PAGE / 2), rows.length - PAGE));
+    const first = (this.first = Math.max(0, Math.min(this.sel - Math.floor(PAGE / 2), rows.length - PAGE)));
     const shown = rows.slice(first, first + PAGE);
     const s = this.screen;
     const more = rows.length > PAGE ? ` · ${first + 1}–${first + shown.length} of ${rows.length}` : "";
     const title = s.kind === "maps" ? `Maps${more}` : s.kind === "map" ? `${maps().find((m) => m.id === s.id)?.title ?? s.id}` : `${this.lib.found?.name ?? ""}: maps found${more}`;
     const columns = s.kind === "maps" ? ["Map", "", ""] : s.kind === "map" ? ["", ""] : ["Map", "Folder", "Size", ""];
-    const items: HudItem[] = [{ type: "table", anchor: "center", title, columns, rows: shown.map((r) => r.cells), highlight: this.sel - first }];
+    const items: HudItem[] = [{ type: "table", anchor: "center", id: MENU_TABLE, selectable: true, title, columns, rows: shown.map((r) => r.cells), highlight: this.sel - first }];
     const lib = this.lib;
     if (lib.pickPending) items.push({ type: "text", anchor: "center", text: "Choose your game's folder in the window that opened", size: "small", tone: "accent" });
     if (lib.notice) items.push({ type: "text", anchor: "center", text: lib.notice.text, size: "small", tone: lib.notice.tone });
     if (s.kind !== "map") items.push({ type: "text", anchor: "center", text: `${COPYRIGHT} · never uploaded, never sent to other players`, size: "small", tone: "dim" });
-    items.push({ type: "text", anchor: "center", text: "Up Down choose · Enter select · Backspace back · M close", size: "small", tone: "dim" });
+    items.push({ type: "text", anchor: "center", text: "Click a row, or Up Down and Enter · Backspace back · M close", size: "small", tone: "dim" });
     return items;
   }
 }

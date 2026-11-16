@@ -62,6 +62,8 @@ let dimmed = false;
 const library = new Library();
 const menu = new Menu(library);
 let foundWas: unknown = null;
+// A row of the menu clicked or tapped (the app draws the menu: its table is selectable).
+host.on("hud.choose", (m) => menu.choose((m as { item?: unknown }).item, (m as { row?: unknown }).row));
 
 function useMap(map: AnyMap): void {
   if (mounted?.map === map) return;

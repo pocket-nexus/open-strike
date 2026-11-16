@@ -6,7 +6,7 @@
 // The engine's own window draws no HUD (the app does): the menu picture has the menu drawn over the traced frame by
 // this tool, from the HUD description the game posted, in the look of ThreeRT for macOS.
 //
-//   node tools/shots-imported.ts <folder with de_dust2.bsp, de_inferno.bsp and their WADs> [--out media] [--width 1600 --height 900] [--frames 72]
+//   node tools/shots-imported.ts <folder with de_dust2.bsp, de_inferno.bsp and their WADs> [--out media] [--only maps-menu,...] [--width 1600 --height 900] [--frames 72]
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -60,7 +60,9 @@ try {
 
   // ---- the pictures ----
   const sharp = engineRequire("sharp") as typeof import("sharp");
+  const only = flag("--only", "").split(",").filter(Boolean);
   for (const p of PICTURES) {
+    if (only.length && !only.includes(p.name)) continue;
     const live = await startLive(out, { launch: { practice: true, bots: 4, targets: true, map: p.map, name: "Ada" }, width, height, scale: "1", files: { store } });
     await live.step(30);
     let overlay: Buffer | null = null;

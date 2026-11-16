@@ -59,6 +59,7 @@ try {
     for (const w of done?.warnings ?? []) console.log(`  warning: ${w}`);
     for (const w of done?.slow ?? []) console.log(`  slow step: ${w}`);
   }
+  console.log(`read of the picked files: ${app.files!.seen["files.read"] ?? 0} requests, ${(app.files!.bytesRead / 1048576).toFixed(1)} MB`);
   const r = (await app.report()) as any;
   console.log(`store: ${r.user.map((u: any) => `${u.id} ${u.hash.slice(0, 12)}…`).join(", ")}`);
   const e = app.live.errors();

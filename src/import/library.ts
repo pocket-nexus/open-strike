@@ -5,9 +5,8 @@ import { addUserMap, isShippedId, mapById, removeUserMap } from "../maps/index.t
 import type { MapData } from "../maps/types.ts";
 import { ImportError } from "./bsp.ts";
 import { type Entry, HostError, type Pending, type Picked, can, files, store } from "./host.ts";
-import { ACCEPT, type Found, type Imported, baseName, idOf, importMap, loadStored, scan, storePaths } from "./job.ts";
+import { ACCEPT, type Found, type Imported, type WadPart, baseName, idOf, importMap, loadStored, scan, storePaths } from "./job.ts";
 import { type Progress, Sliced } from "./sliced.ts";
-import type { Wad } from "./wad.ts";
 
 /** Milliseconds of import work a frame. */
 export const BUDGET_MS = 8;
@@ -37,7 +36,7 @@ export class Library {
   private job: Sliced<Imported> | null = null;
   private current: { entry: Entry; id: string; t0: number } | null = null;
   private readonly queue: { entry: Entry; id: string }[] = [];
-  private wadCache = new Map<string, Wad | null>();
+  private wadCache = new Map<string, WadPart | null>();
 
   /** The app can let the player pick files, and keep them. */
   get canImport(): boolean {
@@ -121,7 +120,7 @@ export class Library {
         this.wadCache = new Map();
         const f = this.found;
         this.say(f.bsps.length ? `${f.name}: ${f.bsps.length} map${f.bsps.length > 1 ? "s" : ""}, ${f.wads.length} texture archive${f.wads.length === 1 ? "" : "s"}` : `${f.name}: no .bsp map in it. Choose the game's folder (cstrike, valve, or the one above them)`, f.bsps.length ? "default" : "warn");
-      } else if (p.reason !== "canceled") this.say(`No folder: ${p.reason}`, "warn");
+      } else if (p.reason !== "canceled") this.say(/\s/.test(p.reason) ? p.reason : `No folder: ${p.reason}`, "warn");
     }
     for (const r of [...this.removing]) {
       if (!r.p.done) continue;

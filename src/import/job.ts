@@ -10,7 +10,7 @@ import { fromBase64, latin1, toBase64 } from "./bytes.ts";
 import { type ConvertStats, convertSteps, mapJson, parseRad } from "./convert.ts";
 import { type Entry, files, store } from "./host.ts";
 import type { Progress } from "./sliced.ts";
-import { type Wad, parseWad, wantedWads } from "./wad.ts";
+import { type Wad, parseWad, wadDirectory, wadHeader, wantedWads } from "./wad.ts";
 
 export const ID_PATTERN = /^[a-z0-9_-]+$/;
 /** What the picker is asked for. */
@@ -77,14 +77,57 @@ export function wadsFor(found: Found, bspPath: string, asked: string[]): Entry[]
 /** A file of the pick, as bytes (read through the app, then decoded a slice at a time). */
 function* readFile(pick: string, entry: Entry, label: string, from: number, to: number): Generator<unknown, Uint8Array> {
   yield { label, done: from } satisfies Progress;
-  const answer = files.read(pick, entry.path);
+  return (yield* decoded(files.read(pick, entry.path), label, from, to)).bytes;
+}
+
+/** An answer's bytes, decoded a slice at a time; with where they start in the file, and the file's size. */
+function* decoded(answer: ReturnType<typeof files.read>, label: string, from: number, to: number): Generator<unknown, { bytes: Uint8Array; offset: number; size: number }> {
   yield answer;
-  const text = answer.result();
-  const g = fromBase64(text);
+  const { data, offset, size } = answer.result();
+  const g = fromBase64(data);
   for (;;) {
     const r = g.next();
-    if (r.done) return r.value;
+    if (r.done) return { bytes: r.value, offset, size: size >= 0 ? size : r.value.length };
     yield { label, done: from + (to - from) * r.value } satisfies Progress;
+  }
+}
+
+/** A WAD as far as it has been read: its directory, and the textures read from it so far. */
+export interface WadPart { wad: Wad; directory: Map<string, { at: number; size: number }> | null }
+
+/**
+ * The textures of `wanted` that a WAD of the pick has, read by ranges: its header and directory once, then each
+ * texture's record (all of them asked for at once). halflife.wad is 38 MB; a map needs a megabyte or two of it. An
+ * app that answers a range with the whole file (one from before ranged reads) gets the whole file read once.
+ */
+function* readWad(pick: string, entry: Entry, wanted: Set<string>, cache: Map<string, WadPart | null>, label: string): Generator<unknown, Wad | null> {
+  const name = baseName(entry.path);
+  let part = cache.get(entry.path);
+  if (part === null) return null;
+  try {
+    if (!part) {
+      const head = yield* decoded(files.read(pick, entry.path, { offset: 0, length: 12 }), label, 0, 0);
+      if (head.bytes.length === head.size && head.size > 12) {
+        part = { wad: parseWad(head.bytes, name), directory: null };
+      } else {
+        const { count, directory } = wadHeader(head.bytes, head.size, name);
+        const dir = yield* decoded(files.read(pick, entry.path, { offset: directory, length: count * 32 }), label, 0, 0);
+        part = { wad: { name, entries: new Map() }, directory: wadDirectory(dir.bytes, count, head.size) };
+      }
+      cache.set(entry.path, part);
+    }
+    const dir = part.directory;
+    if (dir) {
+      const reads = [...wanted].filter((t) => dir.has(t) && !part!.wad.entries.has(t)).map((t) => ({ t, r: dir.get(t)!, p: files.read(pick, entry.path, dir.get(t)!.size ? { offset: dir.get(t)!.at, length: dir.get(t)!.size } : undefined) }));
+      for (const q of reads) {
+        const got = yield* decoded(q.p, label, 0, 0);
+        if (got.bytes.length === q.r.size) part.wad.entries.set(q.t, got.bytes);
+      }
+    }
+    return part.wad;
+  } catch {
+    cache.set(entry.path, null);          // (an archive that cannot be read is one that is not there)
+    return null;
   }
 }
 
@@ -92,7 +135,7 @@ function* readFile(pick: string, entry: Entry, label: string, from: number, to: 
  * Imports one map of a pick into the store under `id`. `wadCache` keeps the archives read for one map for the next
  * (importing all of a folder reads halflife.wad once). Throws ImportError for a file that is not a map it can read.
  */
-export function* importMap(found: Found, bsp: Entry, id: string, wadCache: Map<string, Wad | null>): Generator<unknown, Imported> {
+export function* importMap(found: Found, bsp: Entry, id: string, wadCache: Map<string, WadPart | null>): Generator<unknown, Imported> {
   if (!ID_PATTERN.test(id)) throw new ImportError(`"${id}" cannot be a map id`);
   const name = baseName(bsp.path);
   const bytes = yield* readFile(found.pick, bsp, `${id}: reading ${name}`, 0, 0.06);
@@ -112,16 +155,9 @@ export function* importMap(found: Found, bsp: Entry, id: string, wadCache: Map<s
   const candidates = outside.size ? wadsFor(found, bsp.path, asked) : [];
   for (const [k, w] of candidates.entries()) {
     if (!outside.size) break;
-    let wad = wadCache.get(w.path);
-    if (wad === undefined) {
-      const label = `${id}: reading ${baseName(w.path)}`;
-      try {
-        wad = parseWad(yield* readFile(found.pick, w, label, 0.1 + (0.2 * k) / candidates.length, 0.1 + (0.2 * (k + 1)) / candidates.length), baseName(w.path));
-      } catch {
-        wad = null;          // (an archive that cannot be read is one that is not there)
-      }
-      wadCache.set(w.path, wad);
-    }
+    const label = `${id}: reading ${baseName(w.path)}`;
+    yield { label, done: 0.1 + (0.2 * k) / candidates.length } satisfies Progress;
+    const wad = yield* readWad(found.pick, w, outside, wadCache, label);
     if (!wad) continue;
     const before = outside.size;
     for (const t of [...outside]) if (wad.entries.has(t)) outside.delete(t);

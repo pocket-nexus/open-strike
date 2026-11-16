@@ -90,9 +90,13 @@ export const files = {
   pick(o: { mode: "folder" | "files"; accept?: string[]; title?: string }): Pending<Picked> {
     return ask({ t: "files.pick", ...o }, (m) => ({ pick: String(m.pick), name: String(m.name ?? ""), entries: entries(m.entries) }));
   },
-  /** A picked file, whole, as base64 (decoded by the job, a slice at a time: bytes.ts `fromBase64`). */
-  read(pick: string, path: string): Pending<string> {
-    return ask({ t: "files.read", pick, path }, (m) => String(m.data ?? ""));
+  /**
+   * A picked file, or `length` bytes of it from `offset`, as base64 (decoded by the job, a slice at a time:
+   * bytes.ts `fromBase64`). `size` is the whole file's; `offset` where the data starts (an app from before ranged
+   * reads sends the whole file: `offset` 0).
+   */
+  read(pick: string, path: string, range?: { offset: number; length: number }): Pending<{ data: string; offset: number; size: number }> {
+    return ask({ t: "files.read", pick, path, ...(range ?? {}) }, (m) => ({ data: String(m.data ?? ""), offset: typeof m.offset === "number" ? m.offset : 0, size: typeof m.size === "number" ? m.size : -1 }));
   },
 };
 

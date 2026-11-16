@@ -7,8 +7,8 @@ The game at the repository root: TypeScript on [ThreeRT](https://github.com/mesh
 W A S D move · Shift sprint · C (or Ctrl) crouch · Space jump · mouse aim · left button fire · right button sights ·
 R reload · 1 2 3 or the wheel: weapons · Tab scoreboard · M maps. Click the picture to capture the pointer; Esc lets go.
 
-The Maps menu (M): Up / Down (W / S, the wheel) choose, Enter (Space) takes the choice, Backspace goes back, M
-closes it. While it is open the keys are the menu's: the player stands still.
+The Maps menu (M): click or tap a row; or Up / Down (W / S, the wheel) choose, Enter (Space) takes the choice,
+Backspace goes back, M closes it. While it is open the keys are the menu's: the player stands still.
 
 ## Running it
 

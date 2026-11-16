@@ -1,7 +1,7 @@
 // The app's side of the host channel's `files.*` and `store.*` (the engine's docs/RUNTIME.md "Files"), for a script
 // that is the game's app (app.ts, the tests, shots.ts): a directory as the game's store, and "picks" scripted in
 // advance in place of the player choosing a folder in a dialog.
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
 
 const MAX_READ = 64 * 1024 * 1024;
@@ -29,6 +29,8 @@ export class FilesHost {
   private n = 0;
   /** Every request seen, by type (what a test checks the game asked for). */
   readonly seen: Record<string, number> = {};
+  /** Bytes the game read of what was picked. */
+  bytesRead = 0;
 
   constructor(o: { store: string; picks?: string[] }) {
     this.store = o.store;
@@ -77,17 +79,33 @@ export class FilesHost {
       };
       walk(next, 1);
     }
+    // (As ThreeRT's apps do: a folder with nothing the game asked for is a failed pick, said in a sentence.)
+    if (!files.size) return { ok: false, reason: `Nothing in ${basename(next)} is ${accept ? accept.join(", ") : "a file"}: choose the game's folder` };
     const pick = `pick${++this.n}`;
     this.grants.set(pick, files);
     return { ok: true, pick, name: basename(next), entries: [...files].map(([path, full]) => ({ path, size: statSync(full).size })) };
   }
 
+  /** A whole file, or `length` bytes from `offset` (`size` is the whole file's, `offset` echoed). */
   private read(m: Msg): Body {
     const full = this.grants.get(String(m.pick))?.get(String(m.path));
     if (!full) return { ok: false, reason: "denied" };
     const size = statSync(full).size;
-    if (size > MAX_READ) return { ok: false, reason: "too large" };
-    return { ok: true, data: readFileSync(full).toString("base64"), size };
+    const whole = (v: unknown) => v === undefined || (typeof v === "number" && Number.isInteger(v) && v >= 0);
+    if (!whole(m.offset) || !whole(m.length)) return { ok: false, reason: "offset and length are whole numbers of bytes" };
+    const offset = (m.offset as number | undefined) ?? 0;
+    if (offset > size) return { ok: false, reason: "out of range" };
+    const end = m.length === undefined ? size : Math.min(size, offset + (m.length as number));
+    if (end - offset > MAX_READ) return { ok: false, reason: "too large" };
+    this.bytesRead += end - offset;
+    const fd = openSync(full, "r");
+    try {
+      const buf = Buffer.alloc(end - offset);
+      readSync(fd, buf, 0, buf.length, offset);
+      return { ok: true, data: buf.toString("base64"), offset, size };
+    } finally {
+      closeSync(fd);
+    }
   }
 
   private at(path: unknown): string {

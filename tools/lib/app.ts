@@ -90,6 +90,8 @@ export class App {
   }
 
   press(...keys: string[]): void { this.once.pressed.push(...keys); }
+  /** The player clicks or taps row `row` of the selectable HUD table `item` (the app's `hud.choose`). */
+  choose(item: string | number, row: number): void { this.inbox.push({ t: "hud.choose", item, row }); }
   look(dx: number, dy: number): void { this.once.dx += dx; this.once.dy += dy; }
 
   /** One frame: the app's messages in, the frame, what the game posted out. */
