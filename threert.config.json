@@ -2,7 +2,7 @@
   "id": "openstrike-rt",
   "name": "OpenStrikeRT",
   "entry": "game.ts",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publish": {
     "name": "openstrike",
     "title": "OpenStrikeRT",
