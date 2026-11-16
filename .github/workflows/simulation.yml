@@ -3,41 +3,46 @@ name: Simulation timing
 on:
   pull_request:
     paths:
-      - "crates/openstrike-core/**"
-      - "crates/openstrike-companion/**"
-      - "crates/openstrike-character/**"
-      - "crates/openstrike-mods/**"
-      - "mods/**"
-      - "crates/openstrike-psp/**"
-      - "crates/openstrike-symbian/**"
-      - "crates/openstrike-vita/**"
-      - "game/sdk.ts"
-      - "test/strike-sdk.test.ts"
-      - "domain/**"
-      - "vendor/pocketjs"
-      - "Cargo.lock"
+      - "ports/pocket3d/crates/openstrike-core/**"
+      - "ports/pocket3d/crates/openstrike-companion/**"
+      - "ports/pocket3d/crates/openstrike-character/**"
+      - "ports/pocket3d/crates/openstrike-mods/**"
+      - "ports/pocket3d/mods/**"
+      - "ports/pocket3d/crates/openstrike-psp/**"
+      - "ports/pocket3d/crates/openstrike-symbian/**"
+      - "ports/pocket3d/crates/openstrike-vita/**"
+      - "ports/pocket3d/game/sdk.ts"
+      - "ports/pocket3d/test/strike-sdk.test.ts"
+      - "ports/pocket3d/domain/**"
+      - "ports/pocket3d/vendor/pocketjs"
+      - "ports/pocket3d/Cargo.lock"
       - ".github/workflows/simulation.yml"
   push:
     branches: [main]
     paths:
-      - "crates/openstrike-core/**"
-      - "crates/openstrike-companion/**"
-      - "crates/openstrike-character/**"
-      - "crates/openstrike-mods/**"
-      - "mods/**"
-      - "crates/openstrike-psp/**"
-      - "crates/openstrike-symbian/**"
-      - "crates/openstrike-vita/**"
-      - "game/sdk.ts"
-      - "test/strike-sdk.test.ts"
-      - "domain/**"
-      - "vendor/pocketjs"
-      - "Cargo.lock"
+      - "ports/pocket3d/crates/openstrike-core/**"
+      - "ports/pocket3d/crates/openstrike-companion/**"
+      - "ports/pocket3d/crates/openstrike-character/**"
+      - "ports/pocket3d/crates/openstrike-mods/**"
+      - "ports/pocket3d/mods/**"
+      - "ports/pocket3d/crates/openstrike-psp/**"
+      - "ports/pocket3d/crates/openstrike-symbian/**"
+      - "ports/pocket3d/crates/openstrike-vita/**"
+      - "ports/pocket3d/game/sdk.ts"
+      - "ports/pocket3d/test/strike-sdk.test.ts"
+      - "ports/pocket3d/domain/**"
+      - "ports/pocket3d/vendor/pocketjs"
+      - "ports/pocket3d/Cargo.lock"
       - ".github/workflows/simulation.yml"
   workflow_dispatch: {}
 
 permissions:
   contents: read
+
+# The Pocket3D builds live in ports/pocket3d (README.md "Ports").
+defaults:
+  run:
+    working-directory: ports/pocket3d
 
 jobs:
   simulation:
@@ -50,6 +55,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: oven-sh/setup-bun@v2
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ports/pocket3d
       - run: cargo test --locked -p openstrike-core -p openstrike-character -p openstrike-mods -p openstrike-companion
       - run: cargo check --locked -p openstrike-core --no-default-features --features libm
       - run: cargo check --locked --manifest-path crates/openstrike-symbian/Cargo.toml --lib

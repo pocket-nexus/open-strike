@@ -1,34 +1,9 @@
-# build outputs
-/target
-/dist
-
-# copyrighted game data — provide your own maps (see README)
+.threert/
+dist/
+node_modules
+.threert
+dist
+out
+# imported maps: your own copies of copyrighted maps, never committed or published (docs/MAPS.md)
+/maps/*/
 /assets/maps/
-/assets/wads/
-
-# local tooling
-.DS_Store
-
-# js deps (bun run setup re-creates the solid-js link)
-/node_modules
-/.pocket/
-
-# PSP EBOOT crate (excluded from the workspace, so /target doesn't cover it)
-crates/openstrike-psp/target/
-# Vita VPK crate and staged copyrighted map data.
-crates/openstrike-vita/target/
-crates/openstrike-vita/static/maps/
-# Symbian app-specific static core (standalone nightly build-std crate).
-crates/openstrike-symbian/target/
-# script/e2e outputs
-/out/
-/.pocket-build/
-/pocketjs-dbg/
-
-/crates/openstrike-3ds/target/
-__pycache__/
-
-/crates/openstrike-ipod/target/
-
-/domain/target/
-/domain/crates/*/target/

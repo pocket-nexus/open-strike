@@ -1,0 +1,117 @@
+{
+  "id": "openstrike-rt",
+  "name": "OpenStrikeRT",
+  "entry": "game.ts",
+  "version": "0.3.0",
+  "publish": {
+    "name": "openstrike",
+    "title": "OpenStrikeRT",
+    "summary": "A path-traced team shooter: open it and you are in a match. Two teams, three lanes, every light traced.",
+    "kind": "game",
+    "tags": [
+      "shooter",
+      "multiplayer",
+      "fps",
+      "team-deathmatch",
+      "path-traced",
+      "first-party"
+    ],
+    "controls": "W A S D move · Shift sprint · C crouch · Space jump · mouse aim, left fire, right sights · R reload · 1 2 3 or wheel: weapons · Tab scores",
+    "multiplayer": {
+      "min": 1,
+      "max": 10
+    },
+    "webPlayable": false,
+    "cover": "media/cover.jpg",
+    "screenshots": [
+      "media/screenshot-1-hall.jpg",
+      "media/screenshot-2-yard-fight.jpg",
+      "media/screenshot-3-soldiers.jpg",
+      "media/screenshot-4-gantry.jpg",
+      "media/screenshot-5-scope.jpg",
+      "media/screenshot-6-hall-furnace.jpg"
+    ]
+  },
+  "ports": [
+    {
+      "id": "pocket3d-psp",
+      "title": "PSP",
+      "platforms": [
+        "psp"
+      ],
+      "dir": "ports/pocket3d",
+      "engine": "pocket3d",
+      "build": "bun scripts/psp.ts --package",
+      "artifact": "dist/PSP/GAME/OpenStrike",
+      "status": "playable",
+      "notes": "Maps are cooked at build time from the player's own Counter-Strike 1.x BSPs (OPENSTRIKE_MAPS); the build holds no game data."
+    },
+    {
+      "id": "pocket3d-vita",
+      "title": "PS Vita",
+      "platforms": [
+        "ps-vita"
+      ],
+      "dir": "ports/pocket3d",
+      "engine": "pocket3d",
+      "build": "bun scripts/vita.ts --release",
+      "artifact": "dist/vita/OpenStrike.vpk",
+      "status": "playable",
+      "notes": "Maps are cooked at build time from the player's own Counter-Strike 1.x BSPs (OPENSTRIKE_MAPS); the build holds no game data."
+    },
+    {
+      "id": "pocket3d-3ds",
+      "title": "Nintendo 3DS",
+      "platforms": [
+        "3ds"
+      ],
+      "dir": "ports/pocket3d",
+      "engine": "pocket3d",
+      "build": "bun scripts/3ds.ts",
+      "artifact": "dist/3ds/OpenStrike-3DS-SD.zip",
+      "status": "playable",
+      "notes": "Maps are cooked at build time from the player's own Counter-Strike 1.x BSPs (OPENSTRIKE_MAPS); the build holds no game data."
+    },
+    {
+      "id": "pocket3d-ipod",
+      "title": "iPod touch 4",
+      "platforms": [
+        "ios-6"
+      ],
+      "dir": "ports/pocket3d",
+      "engine": "pocket3d",
+      "build": "bun scripts/ipodtouch4.ts build",
+      "artifact": "vendor/pocketjs/dist/ipodtouch4/OpenStrike.ipa",
+      "status": "experimental",
+      "notes": "Maps are cooked at build time from the player's own Counter-Strike 1.x BSPs (OPENSTRIKE_MAPS); the build holds no game data."
+    },
+    {
+      "id": "pocket3d-e7",
+      "title": "Nokia E7",
+      "platforms": [
+        "symbian"
+      ],
+      "dir": "ports/pocket3d",
+      "engine": "pocket3d",
+      "build": "bun scripts/symbian.ts",
+      "artifact": "dist/symbian/openstrike.sis",
+      "status": "experimental",
+      "notes": "Maps are cooked at build time from the player's own Counter-Strike 1.x BSPs (OPENSTRIKE_MAPS); the build holds no game data."
+    },
+    {
+      "id": "pocket3d-desktop",
+      "title": "Desktop (wgpu)",
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "dir": "ports/pocket3d",
+      "engine": "pocket3d",
+      "build": "cargo build --release -p openstrike",
+      "artifact": "target/release/openstrike",
+      "status": "playable",
+      "notes": "The Pocket3D desktop build, the PSP's crossplay companion (docs/CROSSPLAY.md). Maps are cooked at build time from the player's own Counter-Strike 1.x BSPs (OPENSTRIKE_MAPS); the build holds no game data."
+    }
+  ]
+}

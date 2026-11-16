@@ -1,13 +1,18 @@
 name: iPod touch controls and contracts
 on:
   pull_request:
-    paths: ["crates/openstrike-ipod/**", "crates/openstrike-core/**", "crates/openstrike-character/**", "crates/openstrike-mods/**", "crates/openstrike-vita/src/**", "crates/openstrike-psp/src/strike.rs", "crates/openstrike-symbian/src/quickjs.rs", "game/**", "scripts/ipod*.ts", "hosts/ipodtouch4/**", "test/primary-touch.test.ts", "test/primary-touch-gesture.test.ts", "test/strike-sdk.test.ts", "test/fixtures/ipod-contacts.c", "package.json", "pocket.json", "domain/**", "vendor/pocketjs", ".github/workflows/ipod.yml"]
+    paths: ["ports/pocket3d/crates/openstrike-ipod/**", "ports/pocket3d/crates/openstrike-core/**", "ports/pocket3d/crates/openstrike-character/**", "ports/pocket3d/crates/openstrike-mods/**", "ports/pocket3d/crates/openstrike-vita/src/**", "ports/pocket3d/crates/openstrike-psp/src/strike.rs", "ports/pocket3d/crates/openstrike-symbian/src/quickjs.rs", "ports/pocket3d/game/**", "ports/pocket3d/scripts/ipod*.ts", "ports/pocket3d/hosts/ipodtouch4/**", "ports/pocket3d/test/primary-touch.test.ts", "ports/pocket3d/test/primary-touch-gesture.test.ts", "ports/pocket3d/test/strike-sdk.test.ts", "ports/pocket3d/test/fixtures/ipod-contacts.c", "ports/pocket3d/package.json", "ports/pocket3d/pocket.json", "ports/pocket3d/domain/**", "ports/pocket3d/vendor/pocketjs", ".github/workflows/ipod.yml"]
   push:
     branches: [main]
-    paths: ["crates/openstrike-ipod/**", "crates/openstrike-core/**", "crates/openstrike-character/**", "crates/openstrike-mods/**", "crates/openstrike-vita/src/**", "crates/openstrike-psp/src/strike.rs", "crates/openstrike-symbian/src/quickjs.rs", "game/**", "scripts/ipod*.ts", "hosts/ipodtouch4/**", "test/primary-touch.test.ts", "test/primary-touch-gesture.test.ts", "test/strike-sdk.test.ts", "test/fixtures/ipod-contacts.c", "package.json", "pocket.json", "domain/**", "vendor/pocketjs", ".github/workflows/ipod.yml"]
+    paths: ["ports/pocket3d/crates/openstrike-ipod/**", "ports/pocket3d/crates/openstrike-core/**", "ports/pocket3d/crates/openstrike-character/**", "ports/pocket3d/crates/openstrike-mods/**", "ports/pocket3d/crates/openstrike-vita/src/**", "ports/pocket3d/crates/openstrike-psp/src/strike.rs", "ports/pocket3d/crates/openstrike-symbian/src/quickjs.rs", "ports/pocket3d/game/**", "ports/pocket3d/scripts/ipod*.ts", "ports/pocket3d/hosts/ipodtouch4/**", "ports/pocket3d/test/primary-touch.test.ts", "ports/pocket3d/test/primary-touch-gesture.test.ts", "ports/pocket3d/test/strike-sdk.test.ts", "ports/pocket3d/test/fixtures/ipod-contacts.c", "ports/pocket3d/package.json", "ports/pocket3d/pocket.json", "ports/pocket3d/domain/**", "ports/pocket3d/vendor/pocketjs", ".github/workflows/ipod.yml"]
   workflow_dispatch: {}
 permissions:
   contents: read
+
+# The Pocket3D builds live in ports/pocket3d (README.md "Ports").
+defaults:
+  run:
+    working-directory: ports/pocket3d
 jobs:
   controls:
     runs-on: ubuntu-24.04
@@ -19,7 +24,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: crates/openstrike-ipod
+          workspaces: ports/pocket3d/crates/openstrike-ipod
       - run: bun run setup
       - run: bun run typecheck
       - run: bun run test:ipod
@@ -35,5 +40,5 @@ jobs:
           components: miri
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: crates/openstrike-ipod
+          workspaces: ports/pocket3d/crates/openstrike-ipod
       - run: cargo miri test --locked --manifest-path crates/openstrike-ipod/Cargo.toml --features native-check guest_callbacks_are_independent
