@@ -5,7 +5,7 @@ const script = await Bun.file(new URL("../scripts/psp.ts", import.meta.url)).tex
 const packageJson = await Bun.file(new URL("../package.json", import.meta.url)).json();
 const dependencyContract = (
   await Promise.all(
-    ["../.gitmodules", "../crates/openstrike-psp/Cargo.toml", "../crates/openstrike-vita/Cargo.toml"]
+    ["../../../.gitmodules", "../crates/openstrike-psp/Cargo.toml", "../crates/openstrike-vita/Cargo.toml"]
       .map((path) => Bun.file(new URL(path, import.meta.url)).text()),
   )
 ).join("\n");
