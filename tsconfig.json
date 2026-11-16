@@ -1,0 +1,8 @@
+{
+  "extends": "./.threert/tsconfig.paths.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "resolveJsonModule": true
+  },
+  "include": ["*.ts", "src/**/*.ts", "maps/*.ts", "tools/**/*.ts"]
+}

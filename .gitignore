@@ -1,0 +1,9 @@
+.threert/
+dist/
+node_modules
+.threert
+dist
+out
+# imported maps: your own copies of copyrighted maps, never committed or published (docs/MAPS.md)
+/maps/*/
+/assets/maps/
