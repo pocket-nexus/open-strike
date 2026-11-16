@@ -10,6 +10,11 @@ on:
 permissions:
   contents: read
 
+# The Pocket3D builds live in ports/pocket3d (README.md "Ports").
+defaults:
+  run:
+    working-directory: ports/pocket3d
+
 jobs:
   guard:
     runs-on: ubuntu-24.04

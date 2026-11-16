@@ -1,4 +1,13 @@
-# OpenStrike
+# OpenStrike for PSP, PS Vita, 3DS, iPod touch and Nokia E7 (the Pocket3D port)
+
+> **This is a port.** The game is the path-traced OpenStrike at the [repository root](../../README.md): TypeScript on
+> ThreeRT, the version every rule and table comes from. The devices ThreeRT cannot run on get this port: a Rust
+> simulation (`openstrike-core`), Pocket3D renderers specialized per device, and rules and HUD in JavaScript on
+> PocketJS. It keeps its own gameplay code (it does not share the TypeScript game's), follows the game's names for
+> modes and maps, and cooks its maps from the player's own BSPs at build time like the game imports them. How ports
+> fit together: [ThreeRT's docs/PORTS.md](https://github.com/meshy-dev/ThreeRT/blob/main/docs/PORTS.md).
+>
+> Every command below runs in this directory (`ports/pocket3d`).
 
 <p align="center">
   <img src="docs/hero.jpg" width="820" alt="OpenStrike rendering de_dust in Pocket3D — a wide sunlit desert courtyard with arches, crates and an open sky." />
@@ -46,13 +55,6 @@ crates/openstrike-symbian
                          GLES2, statically linked into PocketJS's Qt host
 crates/openstrike-3ds    the 3DS build: native 400×240 world/HUD plus a
                          320×240 tactical map and touch controls
-crates/openstrike-game   the modern game, for hosts with a GPU to spare: team
-                         deathmatch and elimination with bots on both sides,
-                         five weapons with sights and recoil, grenades, sprint
-                         / crouch / slide / mantle, bodies posed by IK with
-                         ragdolls (see its README; the consoles keep the core)
-crates/openstrike-audio  its sound: effects synthesized at startup, a spatial
-                         mixer, ALSA / AudioQueue / AAudio opened at run time
 
 game/                    the product bundle (JS/TSX) — runs on every target
   ├─ sdk.ts              `strike` SDK: state snapshots, events, commands
@@ -73,8 +75,8 @@ game grants itself no privileges a mod wouldn't have.
 ## Building
 
 ```sh
-git clone --recursive https://github.com/pocket-nexus/open-strike
-cd open-strike
+git clone --recursive https://github.com/pocket-nexus/openstrike
+cd openstrike/ports/pocket3d
 bun run setup      # installs the vendored framework deps + solid-js link
 bun run bootstrap  # install the pinned PSP toolchain into the shared cache
 bun run check:platforms

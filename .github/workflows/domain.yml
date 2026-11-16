@@ -1,12 +1,17 @@
 name: OpenStrike domain compiler
 on:
   pull_request:
-    paths: ['domain/**', 'crates/openstrike/**', 'scripts/cook-map.ts', 'scripts/symbian.ts', 'scripts/gu-demo.ts', 'test/cook-map.test.ts', 'test/symbian-tooling.test.ts', 'Cargo.toml', 'Cargo.lock', 'vendor/pocketjs', '.github/workflows/domain.yml']
+    paths: ['ports/pocket3d/domain/**', 'ports/pocket3d/crates/openstrike/**', 'ports/pocket3d/scripts/cook-map.ts', 'ports/pocket3d/scripts/symbian.ts', 'ports/pocket3d/scripts/gu-demo.ts', 'ports/pocket3d/test/cook-map.test.ts', 'ports/pocket3d/test/symbian-tooling.test.ts', 'ports/pocket3d/Cargo.toml', 'ports/pocket3d/Cargo.lock', 'ports/pocket3d/vendor/pocketjs', '.github/workflows/domain.yml']
   push:
     branches: [main]
-    paths: ['domain/**', 'crates/openstrike/**', 'scripts/cook-map.ts', 'scripts/symbian.ts', 'scripts/gu-demo.ts', 'test/cook-map.test.ts', 'test/symbian-tooling.test.ts', 'Cargo.toml', 'Cargo.lock', 'vendor/pocketjs', '.github/workflows/domain.yml']
+    paths: ['ports/pocket3d/domain/**', 'ports/pocket3d/crates/openstrike/**', 'ports/pocket3d/scripts/cook-map.ts', 'ports/pocket3d/scripts/symbian.ts', 'ports/pocket3d/scripts/gu-demo.ts', 'ports/pocket3d/test/cook-map.test.ts', 'ports/pocket3d/test/symbian-tooling.test.ts', 'ports/pocket3d/Cargo.toml', 'ports/pocket3d/Cargo.lock', 'ports/pocket3d/vendor/pocketjs', '.github/workflows/domain.yml']
 permissions:
   contents: read
+
+# The Pocket3D builds live in ports/pocket3d (README.md "Ports").
+defaults:
+  run:
+    working-directory: ports/pocket3d
 jobs:
   contracts:
     runs-on: ubuntu-24.04
@@ -20,10 +25,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            .
-            domain
-            domain/crates/pocket3d-vita
-            domain/crates/pocket3d-gles2
+            ports/pocket3d
+            ports/pocket3d/domain
+            ports/pocket3d/domain/crates/pocket3d-vita
+            ports/pocket3d/domain/crates/pocket3d-gles2
       - run: bun run setup
       - run: cargo test --locked --manifest-path domain/Cargo.toml
       - run: cargo check --locked --manifest-path domain/Cargo.toml -p pocket3d-bsp --no-default-features --features libm

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/openstrike", "crates/openstrike-core", "crates/openstrike-character", "crates/openstrike-mods", "crates/openstrike-companion", "crates/openstrike-game", "crates/openstrike-audio"]
+members = ["crates/openstrike", "crates/openstrike-core", "crates/openstrike-character", "crates/openstrike-mods", "crates/openstrike-companion"]
 # The vendored engine keeps its own workspaces (Cargo would otherwise try to
 # adopt the path-dependency crates into this one and break their inheritance).
 exclude = [
@@ -17,7 +17,7 @@ exclude = [
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/pocket-stack/open-strike"
+repository = "https://github.com/pocket-nexus/openstrike"
 
 [workspace.dependencies]
 # The engine family is vendored as a git submodule (vendor/pocketjs) so the

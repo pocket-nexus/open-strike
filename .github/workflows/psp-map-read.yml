@@ -3,27 +3,32 @@ name: PSP map reader
 on:
   pull_request:
     paths:
-      - "crates/openstrike-psp/src/maps/**"
-      - "crates/openstrike-psp/src/maps.rs"
-      - "crates/openstrike-psp/src/main.rs"
-      - "test/psp-map-read.test.ts"
-      - "scripts/psp-memory.ts"
-      - "test/psp-memory.test.ts"
+      - "ports/pocket3d/crates/openstrike-psp/src/maps/**"
+      - "ports/pocket3d/crates/openstrike-psp/src/maps.rs"
+      - "ports/pocket3d/crates/openstrike-psp/src/main.rs"
+      - "ports/pocket3d/test/psp-map-read.test.ts"
+      - "ports/pocket3d/scripts/psp-memory.ts"
+      - "ports/pocket3d/test/psp-memory.test.ts"
       - ".github/workflows/psp-map-read.yml"
   push:
     branches: [main]
     paths:
-      - "crates/openstrike-psp/src/maps/**"
-      - "crates/openstrike-psp/src/maps.rs"
-      - "crates/openstrike-psp/src/main.rs"
-      - "test/psp-map-read.test.ts"
-      - "scripts/psp-memory.ts"
-      - "test/psp-memory.test.ts"
+      - "ports/pocket3d/crates/openstrike-psp/src/maps/**"
+      - "ports/pocket3d/crates/openstrike-psp/src/maps.rs"
+      - "ports/pocket3d/crates/openstrike-psp/src/main.rs"
+      - "ports/pocket3d/test/psp-map-read.test.ts"
+      - "ports/pocket3d/scripts/psp-memory.ts"
+      - "ports/pocket3d/test/psp-memory.test.ts"
       - ".github/workflows/psp-map-read.yml"
   workflow_dispatch: {}
 
 permissions:
   contents: read
+
+# The Pocket3D builds live in ports/pocket3d (README.md "Ports").
+defaults:
+  run:
+    working-directory: ports/pocket3d
 
 jobs:
   read:

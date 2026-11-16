@@ -1,10 +1,10 @@
 [submodule "vendor/pocketjs"]
-	path = vendor/pocketjs
+	path = ports/pocket3d/vendor/pocketjs
 	url = https://github.com/pocket-nexus/pocketjs.git
 	branch = main
 [submodule "vendor/rust-psp"]
-	path = vendor/rust-psp
+	path = ports/pocket3d/vendor/rust-psp
 	url = https://github.com/pocket-nexus/rust-psp.git
 [submodule "vendor/quickjs-rs"]
-	path = vendor/quickjs-rs
+	path = ports/pocket3d/vendor/quickjs-rs
 	url = https://github.com/pocket-nexus/quickjs-rs.git

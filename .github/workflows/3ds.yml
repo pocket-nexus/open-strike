@@ -4,46 +4,51 @@ on:
   pull_request:
     paths:
       [
-        "crates/openstrike-3ds/**",
-        "crates/openstrike-core/**",
-        "crates/openstrike-character/**",
-        "crates/openstrike-mods/**",
-        "crates/openstrike-vita/src/**",
-        "crates/openstrike-psp/src/strike.rs",
-        "game/**",
-        "scripts/3ds.ts",
-        "scripts/deploy-3ds.*",
-        "test/*3ds*",
-        "test/tactical-touch.test.ts",
-        "pocket.json",
-        "package.json",
-        "domain/**", "vendor/pocketjs",
+        "ports/pocket3d/crates/openstrike-3ds/**",
+        "ports/pocket3d/crates/openstrike-core/**",
+        "ports/pocket3d/crates/openstrike-character/**",
+        "ports/pocket3d/crates/openstrike-mods/**",
+        "ports/pocket3d/crates/openstrike-vita/src/**",
+        "ports/pocket3d/crates/openstrike-psp/src/strike.rs",
+        "ports/pocket3d/game/**",
+        "ports/pocket3d/scripts/3ds.ts",
+        "ports/pocket3d/scripts/deploy-3ds.*",
+        "ports/pocket3d/test/*3ds*",
+        "ports/pocket3d/test/tactical-touch.test.ts",
+        "ports/pocket3d/pocket.json",
+        "ports/pocket3d/package.json",
+        "ports/pocket3d/domain/**", "ports/pocket3d/vendor/pocketjs",
         ".github/workflows/3ds.yml",
       ]
   push:
     branches: [main]
     paths:
       [
-        "crates/openstrike-3ds/**",
-        "crates/openstrike-core/**",
-        "crates/openstrike-character/**",
-        "crates/openstrike-mods/**",
-        "crates/openstrike-vita/src/**",
-        "crates/openstrike-psp/src/strike.rs",
-        "game/**",
-        "scripts/3ds.ts",
-        "scripts/deploy-3ds.*",
-        "test/*3ds*",
-        "test/tactical-touch.test.ts",
-        "pocket.json",
-        "package.json",
-        "domain/**", "vendor/pocketjs",
+        "ports/pocket3d/crates/openstrike-3ds/**",
+        "ports/pocket3d/crates/openstrike-core/**",
+        "ports/pocket3d/crates/openstrike-character/**",
+        "ports/pocket3d/crates/openstrike-mods/**",
+        "ports/pocket3d/crates/openstrike-vita/src/**",
+        "ports/pocket3d/crates/openstrike-psp/src/strike.rs",
+        "ports/pocket3d/game/**",
+        "ports/pocket3d/scripts/3ds.ts",
+        "ports/pocket3d/scripts/deploy-3ds.*",
+        "ports/pocket3d/test/*3ds*",
+        "ports/pocket3d/test/tactical-touch.test.ts",
+        "ports/pocket3d/pocket.json",
+        "ports/pocket3d/package.json",
+        "ports/pocket3d/domain/**", "ports/pocket3d/vendor/pocketjs",
         ".github/workflows/3ds.yml",
       ]
   workflow_dispatch: {}
 
 permissions:
   contents: read
+
+# The Pocket3D builds live in ports/pocket3d (README.md "Ports").
+defaults:
+  run:
+    working-directory: ports/pocket3d
 
 jobs:
   contracts:
@@ -56,7 +61,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: crates/openstrike-3ds
+          workspaces: ports/pocket3d/crates/openstrike-3ds
       - run: bun run setup
       - run: bun run check:platforms
       - run: bun run test:3ds
