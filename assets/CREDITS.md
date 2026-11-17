@@ -8,7 +8,7 @@ Everything OpenStrikeRT ships is original work of the project or CC0.
 |---|---|---|
 | The maps Foundry and Range | `src/maps/foundry.ts`, `src/maps/range.ts` | geometry, lights and signs in code; no model files |
 | The weapons and first-person arms: VK-5 Carbine, M12 Breacher, LR-9 Marksman | `assets/weapons/*.glb` | modelled in code by `tools/weapons/` (the modelling kit of the earlier native OpenStrike, first-party); `node tools/weapons/build.ts` writes them. Fictional designs: no manufacturer's name, mark or exact likeness. |
-| The soldiers | `src/soldiers.ts` | built and animated in code (instanced parts, procedural poses) |
+| The soldiers (an operator in three outfits) and the gloved first-person arms | `assets/characters/operator.glb`, `arm_r` / `arm_l` in `assets/weapons/*.glb` | sculpted in code by `tools/characters/` (shapes, meshed and simplified there; the cloth's camouflage and weave are generated there too); posed in code by `src/soldiers.ts`. Fictional kit: no maker's name, mark or pattern. |
 | Signs, hazard stripes, the scope's reticle | `src/maps/foundry.ts`, `src/viewmodel.ts` | pixels and meshes generated in code |
 | Effects: muzzle flashes, tracers, sparks, bullet marks, casings | `src/effects.ts` | meshes and lights in code |
 | Every sound: shots (close and distant), reloads, the switch, impacts, steps, the body, hit and kill, respawn, the round's stingers | `assets/sounds/*.ogg` | synthesized by `tools/sounds.ts` (noise, filters, envelopes, oscillators, a synthetic room; seeded) and encoded by ffmpeg's Vorbis encoder. No recordings, samples or third-party audio. |

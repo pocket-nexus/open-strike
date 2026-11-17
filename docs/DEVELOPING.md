@@ -55,14 +55,14 @@ player is put in practice and the HUD says why.
 | `src/player.ts` | the player's capsule: fixed 120 Hz steps, shape sweeps, steps, slopes, ladders, the crouch |
 | `src/weapons.ts` | the weapons in hand: rate of fire, magazines, reloads, sights, spread, recoil |
 | `src/match.ts`, `src/net.ts`, `src/practice.ts` | the match and its two sources: a room of the platform, or bots here |
-| `src/soldiers.ts` | the other players: bodies built and posed in code, and the volumes shots are tested against |
+| `src/soldiers.ts`, `src/character/` | the other players: the operator model posed in code, and the volumes shots are tested against; the skeleton ([CHARACTERS.md](CHARACTERS.md)) |
 | `src/viewmodel.ts`, `src/effects.ts` | the first-person weapon; flashes, tracers, sparks, marks, casings |
 | `src/hud.ts`, `src/sound.ts` | the HUD's description; the sound: the game's names to files, levels, falloffs |
 | `src/menu.ts` | the Maps menu (M): the maps, practice or a room on one, importing, removing |
 | `src/maps/` | what a map is (`types.ts`, `docs/MAPS.md`), Foundry and Range in code, the list of maps, mounting any map |
 | `src/import/` | importing a GoldSrc map in the game: the converter (plain TypeScript), the app's files and store, the player's maps |
 | `maps/index.ts` | the maps a developer's copy bundles (`tools/import-bsp.ts`; empty as shipped) |
-| `tools/` | the build, the weapon models (`weapons/`), textures (`assets.ts`), sounds (`sounds.ts`), pictures (`shots.ts`), the tests |
+| `tools/` | the build, the soldier and the arms (`characters/`), the weapon models (`weapons/`), textures (`assets.ts`), sounds (`sounds.ts`), pictures (`shots.ts`), the tests |
 
 ## Sound
 
@@ -116,8 +116,8 @@ The version is `version` in `threert.config.json`. The published game is https:/
 
 ## Assets
 
-Everything shipped is original or CC0: `assets/CREDITS.md`. The weapons are modelled in code
-(`node tools/weapons/build.ts`), the sounds synthesized in code (`node tools/sounds.ts`), the textures are Poly
+Everything shipped is original or CC0: `assets/CREDITS.md`. The soldiers, the first-person arms and the weapons are
+modelled in code (`node tools/characters/build.ts`, `node tools/weapons/build.ts`: [CHARACTERS.md](CHARACTERS.md)), the sounds synthesized in code (`node tools/sounds.ts`), the textures are Poly
 Haven's (`node tools/assets.ts` copies them from the machine's asset store). `@threert/net` is not in this repository:
 the ThreeRT CLI gives it to every project, and `tools/build.ts` takes it from ThreeRT's SDK (`tools/setup.ts`).
 Imported maps are the players' own and never part of the game (`docs/MAPS.md`).

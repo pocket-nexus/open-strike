@@ -73,6 +73,9 @@ docs/NETCODE.md). Numbers live in `src/config.ts`.
   `packages/gameplay/src/audio.ts`); the files are synthesized by `node tools/sounds.ts` (recipes in it; `--png`
   spectrograms to look at, since a sound cannot be listened to here).
 - Pictures: `node tools/shots.ts` (look at them). The map is `src/maps/foundry.ts`.
+- Characters: the soldier and the first-person arms are sculpted in code (`tools/characters/`, `docs/CHARACTERS.md`):
+  change `operator.ts` / `hand.ts`, run `node tools/characters/build.ts --look` (and `node tools/weapons/build.ts` for
+  the arms), and look at the pictures. The skeleton is `src/character/rig.ts`, shared by the model and the pose.
 - Maps: `docs/MAPS.md` is what a map is and how GoldSrc maps are converted: additive changes only. The converter is
   `src/import/` (plain TypeScript: the game runs it, so nothing of Node's in it); the player imports through the Maps
   menu (`src/menu.ts`) into the app's store, a developer with `tools/import-bsp.ts` into a remix. Imported maps are

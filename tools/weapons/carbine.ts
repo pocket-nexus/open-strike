@@ -139,12 +139,12 @@ export function carbine(k: Kit): Meta {
     ...fit.pose,
     fingers: [{ curl: [fa, fb - 4, Math.max(8, fd - 22)] }, { curl: [fa, fb, fd] }, { curl: [fa + 2, fb, fd] }, { curl: [fa + 5, fb - 2, fd] }],
     thumb: [[-34, 26, -297], [-29.5, 48, -313], [-27, 60, -333]],
-    elbow: [-200, -190, 20],
+    elbow: [-310, -150, -60],
   };
   if (k.hi && process.env.HANDS) console.log(`support fit: penalty ${fit.penalty.toFixed(1)}, thumb reach ${fit.reach.toFixed(0)} mm`);
   if (k.hi && process.env.HANDS) console.log(`right\n${describeHand(right)}\nleft\n${describeHand(left)}`);
   arm(k, right);
   arm(k, left);
 
-  return { muzzle: [0, BORE, -535], eject: [15.5, 48, -101], ejectDir: [0.9, 0.35, 0.25], eye: [0, sight, 48], gripL: [-10, 26, -300], magOut: [0, -120, -22], boltTravel: travel };
+  return { muzzle: [0, BORE, -535], eject: [15.5, 48, -101], ejectDir: [0.9, 0.35, 0.25], eye: [0, sight, 48], gripL: [-10, 26, -300], magOut: [0, -120, -22], boltTravel: travel, hands: { right, left } };
 }

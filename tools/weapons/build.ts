@@ -1,5 +1,6 @@
-// Builds OpenStrikeRT's weapon models in code (no modelling files): first-person GLBs (nodes body, mag, bolt, arm_r,
-// arm_l), low-detail world GLBs (one node, body) for the soldiers' hands, and src/weapons/meta.json (muzzle, ejection
+// Builds OpenStrike's weapon models in code (no modelling files): one GLB a weapon (nodes body, mag, bolt, and the
+// first-person arms arm_r, arm_l; a soldier seen in the world holds the same model without the arms), and
+// src/weapons/meta.json (muzzle, ejection
 // port, the eye point of the sights, ... in metres, weapon space).
 //
 //   node tools/weapons/build.ts [--only carbine,shotgun]
@@ -12,7 +13,7 @@ import { join } from "node:path";
 import { ROOT } from "../lib/engine.ts";
 import { Kit } from "./kit.ts";
 import { writeGlb } from "./glb.ts";
-import { MATERIALS } from "./materials.ts";
+import { CLOTH, MATERIALS } from "./materials.ts";
 import type { Meta } from "./parts.ts";
 import { carbine } from "./carbine.ts";
 import { dmr } from "./dmr.ts";
@@ -36,10 +37,7 @@ for (const id of Object.keys(WEAPONS)) {
   if (!only.includes(id)) continue;
   const k = new Kit(0);
   const meta: Meta = WEAPONS[id]!(k);
-  const tris = writeGlb(join(out, `${id}.glb`), k.parts, MATERIALS, NODES);
-  const w = new Kit(1);
-  WEAPONS[id]!(w);
-  const worldTris = writeGlb(join(out, `${id}_world.glb`), w.parts, MATERIALS, ["body"]);
+  const tris = writeGlb(join(out, `${id}.glb`), k.parts, MATERIALS, NODES, 0.001, CLOTH);
   let z0 = Infinity, z1 = -Infinity;
   for (const [name, mats] of k.parts) {
     if (name.startsWith("arm")) continue;
@@ -47,10 +45,10 @@ for (const id of Object.keys(WEAPONS)) {
   }
   all[id] = {
     muzzle: m(meta.muzzle), eject: m(meta.eject), ejectDir: unit(meta.ejectDir), eye: m(meta.eye), gripL: m(meta.gripL), magOut: m(meta.magOut),
-    boltTravel: +(meta.boltTravel / 1000).toFixed(4), length: +((z1 - z0) / 1000).toFixed(4), tris, worldTris,
+    boltTravel: +(meta.boltTravel / 1000).toFixed(4), length: +((z1 - z0) / 1000).toFixed(4), tris,
   };
   const per = [...k.parts.keys()].map((p) => `${p} ${k.triangles(p)}`).join(", ");
-  console.log(`${id}: ${tris} tris (${per}); world ${worldTris}; length ${((z1 - z0) / 1000).toFixed(3)} m`);
-  for (const wn of new Set([...k.warnings, ...w.warnings])) console.log(`  warning: ${wn}`);
+  console.log(`${id}: ${tris} tris (${per}); length ${((z1 - z0) / 1000).toFixed(3)} m`);
+  for (const wn of new Set(k.warnings)) console.log(`  warning: ${wn}`);
 }
 writeFileSync(join(ROOT, "src/weapons/meta.json"), JSON.stringify(all, null, 2) + "\n");

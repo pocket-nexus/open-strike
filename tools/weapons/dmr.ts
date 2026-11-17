@@ -82,7 +82,7 @@ export function dmr(k: Kit): Meta {
   const section: [number, number][] = [[-10, TOP], [10, TOP], [21, TOP - 11], [21, 35], [10, 24], [-10, 24], [-21, 35], [-21, TOP - 11]];
   const fit = fitSupport(section, -300, TOP, [-33, 29, -293]);
   const [fa, fb, fd] = fit.pose.fingers[0].curl;
-  const left: HandPose = { ...fit.pose, fingers: [{ curl: [fa, fb - 4, Math.max(8, fd - 22)] }, { curl: [fa, fb, fd] }, { curl: [fa + 2, fb, fd] }, { curl: [fa + 5, fb - 2, fd] }], thumb: [[-35, 27, -292], [-30.5, 49, -308], [-28, 61, -328]], elbow: [-200, -190, 20] };
+  const left: HandPose = { ...fit.pose, fingers: [{ curl: [fa, fb - 4, Math.max(8, fd - 22)] }, { curl: [fa, fb, fd] }, { curl: [fa + 2, fb, fd] }, { curl: [fa + 5, fb - 2, fd] }], thumb: [[-35, 27, -292], [-30.5, 49, -308], [-28, 61, -328]], elbow: [-310, -150, -60] };
   if (k.hi && process.env.HANDS) console.log(`dmr support fit: penalty ${fit.penalty.toFixed(1)}, thumb reach ${fit.reach.toFixed(0)} mm`);
   arm(k, RIFLE_GRIP_HAND);
   arm(k, left);

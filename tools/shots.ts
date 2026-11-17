@@ -68,12 +68,42 @@ export const PICTURES: Picture[] = [
   },
 ];
 
+/** Pictures to look at while the characters and the first-person arms are worked on (not for the page). */
+export const STUDIES: Picture[] = [
+  {
+    name: "squad", at: [-17.6, 0, -4.6], yaw: deg(-96), pitch: -0.05, bare: true,
+    bots: [
+      { at: [-15.2, 0, -5.4], yaw: deg(100), team: "azure", weapon: 0 },
+      { at: [-14.9, 0, -3.9], yaw: deg(60), team: "ember", weapon: 2, flags: CROUCH },
+      { at: [-13.6, 0, -5.9], yaw: deg(40), team: "azure", weapon: 1, speed: 6.4, flags: SPRINT },
+      { at: [-14.0, 0, -2.9], yaw: deg(150), team: "ember", weapon: 0, speed: 4.6 },
+    ],
+  },
+  { name: "portrait", at: [-16.6, 0, -5.2], yaw: deg(-98), pitch: -0.02, bare: true, bots: [{ at: [-15.2, 0, -5.4], yaw: deg(125), team: "ember", weapon: 0 }, { at: [-14.6, 0, -4.4], yaw: deg(60), team: "azure", weapon: 0 }] },
+  { name: "rear", at: [-16.9, 0, -4.4], yaw: deg(-96), pitch: -0.08, bare: true, bots: [{ at: [-15.3, 0, -5.2], yaw: deg(-70), team: "ember", weapon: 0 }, { at: [-14.9, 0, -3.6], yaw: deg(-130), team: "azure", weapon: 1, flags: CROUCH }, { at: [-13.4, 0, -4.6], yaw: deg(-10), team: "azure", weapon: 0, speed: 6.4, flags: SPRINT }] },
+  {
+    name: "poses", at: [-17.9, 0, -4.4], yaw: deg(-90), pitch: -0.1, bare: true,
+    bots: [
+      { at: [-15.4, 0, -6.0], yaw: deg(90), team: "ember", weapon: 1 },
+      { at: [-15.2, 0, -5.0], yaw: deg(110), team: "azure", weapon: 2, flags: CROUCH },
+      { at: [-15.2, 0, -3.9], yaw: deg(0), team: "ember", weapon: 0, speed: 6.4, flags: SPRINT },
+      { at: [-15.4, 0, -2.9], yaw: deg(180), pitch: 0.6, team: "azure", weapon: 0 },
+    ],
+  },
+  { name: "fp-carbine", at: [-18.8, 0, -3.3], yaw: deg(-86), pitch: 0.03, bots: [] },
+  { name: "fp-shotgun", at: [-18.8, 0, -3.3], yaw: deg(-86), pitch: 0.03, bots: [], act: [{ keys: ["2"], frames: 50 }] },
+  { name: "fp-dmr", at: [-18.8, 0, -3.3], yaw: deg(-86), pitch: 0.03, bots: [], act: [{ keys: ["3"], frames: 50 }] },
+  { name: "fp-yard", at: [-14.6, 0, -18.3], yaw: deg(-84), pitch: 0.04, bots: [] },
+  { name: "fp-reload", at: [-14.6, 0, -18.3], yaw: deg(-84), pitch: 0.04, bots: [], act: [{ buttons: [0], frames: 6 }, { keys: ["R"], frames: 38 }] },
+  { name: "fp-ads", at: [-14.6, 0, -18.3], yaw: deg(-84), pitch: 0.04, bots: [], act: [{ buttons: [2], frames: 40 }] },
+];
+
 export async function take(live: Live, p: Picture, path: string, frames: number): Promise<void> {
   live.input({ keys: [], buttons: [] });
   live.send({ cmd: "lockstep", dt: 1 / 60 });
   live.send({ cmd: "event", type: "place", payload: { at: p.at, yaw: p.yaw, pitch: p.pitch ?? 0, bare: p.bare === true } });
   live.send({ cmd: "event", type: "stage", payload: { bots: p.bots ?? [] } });
-  await live.step(150);          // (the exposure adapts to the place, as an eye does: a couple of seconds)
+  await live.step(420);          // (the exposure adapts to the place, as an eye does: several seconds)
   for (const a of p.act ?? []) {
     live.input({ keys: a.keys ?? [], buttons: a.buttons ?? [], pressed: [...(a.keys ?? []), ...(a.buttons ?? []).map((b) => `Mouse${b}`)] });
     await live.step(1);
@@ -103,8 +133,8 @@ if (import.meta.main) {
   const { out } = await build();
   const live = await startLive(out, { launch: { practice: true, bots: 4, targets: true, name: "Ada" }, width: Number(flag("--width", "1280")), height: Number(flag("--height", "720")), scale: "1" });
   await live.step(30);
-  for (const p of PICTURES) {
-    if (only.length && !only.includes(p.name)) continue;
+  for (const p of [...PICTURES, ...STUDIES]) {
+    if (only.length ? !only.includes(p.name) : STUDIES.includes(p)) continue;
     const path = join(outDir, `${p.name}.png`);
     await take(live, p, path, Number(flag("--frames", "72")));
     if (args.includes("--jpg")) {

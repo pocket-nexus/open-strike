@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <img src="media/screenshot-2-yard-fight.jpg" width="290" alt="Two teams fighting across the sunlit yard of the Foundry map, path traced" />
-  <img src="media/screenshot-6-hall-furnace.jpg" width="290" alt="The furnace glowing orange in the dim Foundry hall, its light bounced by the path tracer" />
+  <img src="media/screenshot-2-yard-fight.jpg" width="290" alt="First-person view in the sunlit yard of the Foundry map: gloved hands on the carbine, an operator of the other team ahead, path traced" />
+  <img src="media/screenshot-3-soldiers.jpg" width="290" alt="Operators of the two teams in the Foundry hall: helmets, plate carriers and camouflage, modelled in code and path traced" />
   <img src="media/screenshot-5-scope.jpg" width="290" alt="Aiming down the LR-9 Marksman's scope at the gantry" />
 </p>
 
@@ -22,7 +22,7 @@ reflections on a wet floor and muzzle flashes that light the room are all path t
 - **Runs where ThreeRT runs:** Mac, Windows, Steam Deck and Android, path traced on GPUs with ray tracing and
   rasterized on the rest. The **[Pocket3D port](ports/pocket3d/)** brings OpenStrike to the **PSP, PS Vita,
   Nintendo 3DS**, the iPod touch and the Nokia E7.
-- **All code:** the game is TypeScript on ThreeRT's three.js-style scene API; weapons modelled in code, sounds
+- **All code:** the game is TypeScript on ThreeRT's three.js-style scene API; soldiers and weapons modelled in code, sounds
   synthesized in code, textures CC0. MIT licensed.
 
 ## Play
@@ -91,7 +91,8 @@ cook maps from your own BSPs at build time. Building them: [ports/pocket3d/READM
 | `src/import/` | the GoldSrc BSP converter, plain TypeScript that runs inside the game |
 | `assets/`, `media/` | weapon models, sounds, CC0 textures; pictures |
 | `tools/` | build, tests (the real game, headless), the developer's map importer, asset generators |
-| `docs/` | [developing](docs/DEVELOPING.md), [maps](docs/MAPS.md), [netcode](docs/NETCODE.md) |
+| `src/character/`, `tools/characters/` | the soldier and the first-person arms, sculpted in code ([docs/CHARACTERS.md](docs/CHARACTERS.md)) |
+| `docs/` | [developing](docs/DEVELOPING.md), [maps](docs/MAPS.md), [netcode](docs/NETCODE.md), [characters](docs/CHARACTERS.md) |
 | `ports/pocket3d/` | the PSP / PS Vita / 3DS / iPod touch / E7 / desktop builds |
 
 Building and testing the game from source, the launch options, the sound pipeline and releasing:
