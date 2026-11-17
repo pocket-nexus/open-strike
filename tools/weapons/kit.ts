@@ -285,6 +285,18 @@ export class Kit {
     this.xf = old;
   }
 
+  /** Adds a finished mesh (already in the part's space, with its normals) to a part's material. */
+  raw(part: string, mat: string, b: Buf): void {
+    const keep = [this.partName, this.matName];
+    this.part(part).mat(mat);
+    const to = this.buf(), base = to.pos.length / 3;
+    for (const v of b.pos) to.pos.push(v);
+    for (const v of b.nrm) to.nrm.push(v);
+    for (const i of b.idx) to.idx.push(base + i);
+    this.partName = keep[0]!;
+    this.matName = keep[1]!;
+  }
+
   triangles(part?: string): number {
     let n = 0;
     for (const [name, mats] of this.parts) if (!part || part === name) for (const b of mats.values()) n += b.idx.length / 3;

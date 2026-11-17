@@ -3,6 +3,7 @@
 // metals are less mirror-like than the real ones (metallic well under 1, roughness over 0.45): the handhelds trace one
 // sample a pixel, and a glossy metal a hand's length from the eye turns that into sparkle.
 import type { MaterialDef } from "./kit.ts";
+import type { Cloth } from "../characters/gltf.ts";
 
 export const MATERIALS: Record<string, MaterialDef> = {
   // Hard-anodized aluminium (receivers, handguards, optic bodies).
@@ -35,4 +36,13 @@ export const MATERIALS: Record<string, MaterialDef> = {
   glove_shell: { color: [0.016, 0.016, 0.017], metallic: 0, roughness: 0.6 },
   glove_palm: { color: [0.07, 0.065, 0.06], metallic: 0, roughness: 0.9 },
   sleeve: { color: [0.105, 0.115, 0.085], metallic: 0, roughness: 0.95 },
+  // The watch: its case, its glass.
+  hard: { color: [0.03, 0.03, 0.032], metallic: 0, roughness: 0.5 },
+  lens: { color: [0.01, 0.012, 0.014], metallic: 0, roughness: 0.12 },
+};
+
+/** The materials that are cloth, and their pictures (../characters/textures.ts). */
+export const CLOTH: Record<string, Cloth> = {
+  sleeve: { map: "camo", relief: 0.45, repeat: 420 },
+  glove: { map: "cordura", relief: 0.7, repeat: 140 },
 };

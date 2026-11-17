@@ -1,6 +1,7 @@
 // Shared gun parts built with the kit: receiver shells with real ports, slotted handguards, optics, stocks.
 // Millimetres, weapon space (+X right, +Y up, -Z forward; origin = the web of the firing hand at the top of the grip).
 import { type Kit, type V2, type V3, basis, circle, mul, rect, roundRect } from "./kit.ts";
+import type { HandPose } from "./arms.ts";
 
 /** What build.ts writes to meta.json per weapon (millimetres here; metres in the file). */
 export interface Meta {
@@ -11,6 +12,8 @@ export interface Meta {
   gripL: V3;
   magOut: V3;
   boltTravel: number;
+  /** The poses of the hands on it (the soldiers' hands in the world are made from the carbine's). */
+  hands?: { right: HandPose; left: HandPose };
 }
 
 /**

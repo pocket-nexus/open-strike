@@ -32,8 +32,7 @@
     ],
     "boltTravel": 0.058,
     "length": 0.796,
-    "tris": 11956,
-    "worldTris": 1064
+    "tris": 37764
   },
   "shotgun": {
     "muzzle": [
@@ -68,8 +67,7 @@
     ],
     "boltTravel": 0.07,
     "length": 0.932,
-    "tris": 7760,
-    "worldTris": 928
+    "tris": 32995
   },
   "dmr": {
     "muzzle": [
@@ -104,7 +102,6 @@
     ],
     "boltTravel": 0.066,
     "length": 1.05,
-    "tris": 11992,
-    "worldTris": 1432
+    "tris": 37686
   }
 }

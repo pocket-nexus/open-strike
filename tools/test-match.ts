@@ -115,7 +115,7 @@ await Promise.all([walk(ada, intoHall(-1)), walk(lin, intoHall(1))]);
 a = await ada.report();
 l = await lin.report();
 check(Math.abs(a.at[0] + 13.5) < 1 && Math.abs(l.at[0] - 13.5) < 1, `both walked into the hall (x ${f(a.at[0])} and ${f(l.at[0])})`);
-check(seen(a, l) < 0.05 && seen(l, a) < 0.05, "at rest each sees the other where it is");
+check(seen(a, l) < 0.05 && seen(l, a) < 0.05, `at rest each sees the other where it is (${f(seen(a, l))} m, ${f(seen(l, a))} m off)`);
 
 // ---- 4. Lin hits Ada once ----
 lin.press("3");

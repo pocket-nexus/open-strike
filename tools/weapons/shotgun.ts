@@ -82,7 +82,7 @@ export function shotgun(k: Kit): Meta {
   const section: [number, number][] = [[-15, 58], [15, 58], [21, 40], [21, 9], [13, 1], [-13, 1], [-21, 9], [-21, 40]];
   const fit = fitSupport(section, -285, 56, [-33, 14, -278]);
   const [fa, fb, fd] = fit.pose.fingers[0].curl;
-  const left: HandPose = { ...fit.pose, fingers: [{ curl: [fa, fb - 4, Math.max(8, fd - 22)] }, { curl: [fa, fb, fd] }, { curl: [fa + 2, fb, fd] }, { curl: [fa + 5, fb - 2, fd] }], thumb: [[-35, 12, -277], [-31, 34, -292], [-28, 47, -311]], elbow: [-200, -200, 30] };
+  const left: HandPose = { ...fit.pose, fingers: [{ curl: [fa, fb - 4, Math.max(8, fd - 22)] }, { curl: [fa, fb, fd] }, { curl: [fa + 2, fb, fd] }, { curl: [fa + 5, fb - 2, fd] }], thumb: [[-35, 12, -277], [-31, 34, -292], [-28, 47, -311]], elbow: [-310, -150, -60] };
   if (k.hi && process.env.HANDS) console.log(`shotgun support fit: penalty ${fit.penalty.toFixed(1)}, thumb reach ${fit.reach.toFixed(0)} mm`);
   arm(k, RIFLE_GRIP_HAND);
   arm(k, left);

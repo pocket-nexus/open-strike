@@ -106,7 +106,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     reserve: 120,
     spread: { hip: 0.011, ads: 0.0012, move: 0.022, air: 0.06, crouch: 0.65, bloom: 0.0026, bloomMax: 0.022, bloomDecay: 0.05 },
     recoil: { up: 0.0105, side: 0.0045, recover: 0.6, rate: 7, ads: 0.75 },
-    adsFov: 52, adsTime: 0.18, scoped: false, draw: 0.42, mobility: 1, hip: [0.17, -0.185, 0.46],
+    adsFov: 52, adsTime: 0.18, scoped: false, draw: 0.42, mobility: 1, hip: [0.118, -0.137, 0.31],
   },
   shotgun: {
     id: "shotgun", title: "M12 Breacher", auto: false,
@@ -114,7 +114,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     reserve: 28,
     spread: { hip: 0.048, ads: 0.036, move: 0.008, air: 0.02, crouch: 0.9, bloom: 0, bloomMax: 0, bloomDecay: 1 },
     recoil: { up: 0.07, side: 0.012, recover: 0.8, rate: 5, ads: 0.9 },
-    adsFov: 62, adsTime: 0.2, scoped: false, draw: 0.5, mobility: 0.97, hip: [0.175, -0.18, 0.48],
+    adsFov: 62, adsTime: 0.2, scoped: false, draw: 0.5, mobility: 0.97, hip: [0.122, -0.132, 0.33],
   },
   marksman: {
     id: "marksman", title: "LR-9 Marksman", auto: false,
@@ -122,7 +122,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     reserve: 40,
     spread: { hip: 0.03, ads: 0.0003, move: 0.045, air: 0.09, crouch: 0.6, bloom: 0.006, bloomMax: 0.02, bloomDecay: 0.03 },
     recoil: { up: 0.034, side: 0.008, recover: 0.75, rate: 5.5, ads: 0.8 },
-    adsFov: 19, adsTime: 0.26, scoped: true, draw: 0.6, mobility: 0.92, hip: [0.17, -0.19, 0.46],
+    adsFov: 19, adsTime: 0.26, scoped: true, draw: 0.6, mobility: 0.92, hip: [0.118, -0.142, 0.31],
   },
 };
 /** Keys 1, 2, 3 and the wheel go through these in order. */

@@ -57,7 +57,9 @@ let target: { name: string; hostile: boolean } | null = null;
 let targetIn = 0;
 /** A picture without the weapon in it (the `place` handler, practice only). */
 let bare = false;
-let dimmed = false;
+/** How far the eye has adapted to standing in sunlight (0 in the shade .. 1), and the stops that takes off the exposure. */
+let sunlit = 0;
+const SUN_STOPS = 1;
 /** The player's own maps (the store, imports) and the Maps menu. */
 const library = new Library();
 const menu = new Menu(library);
@@ -334,10 +336,21 @@ function frame(f: FrameContext<unknown>): void {
   // Behind a scope most of the picture is its black mask: the exposure meters the picture, so it is held down by what
   // the mask would add (a map with a fixed exposure needs none of this).
   const dim = viewmodel.scoped && alive;
-  if (dim !== dimmed && mounted.map.exposure === undefined) {
-    dimmed = dim;
-    f.camera.setAutoExposure(dim ? -1.7 : 0, 7, 15);
+  // In the open the eye stands in sunlight: the meter, which averages a picture that is mostly shade and dark ground,
+  // would burn out whatever the sun is on (a soldier, the weapon in the hands), so the exposure is brought down as
+  // the eye comes into the sun and let back up in the shade.
+  const sunAt = mounted.map.sun;
+  let open = 0;
+  if (sunAt && sunAt.elevation > 3 && sunAt.illuminance > 20000) {
+    const e = (sunAt.elevation * Math.PI) / 180, a = (sunAt.azimuth * Math.PI) / 180;
+    raycaster.set(new Vector3(...eye), new Vector3(Math.cos(e) * Math.sin(a), Math.sin(e), Math.cos(e) * Math.cos(a)));
+    raycaster.far = 80;
+    open = raycaster.intersectPhysics()[0] ? 0 : 1;
   }
+  sunlit += (open - sunlit) * (1 - Math.exp(-dt * 2.2));
+  const compensation = Math.round((dim ? -1.7 : 0) * 10 - SUN_STOPS * sunlit * 10) / 10;
+  const exposure = f.camera.exposure;
+  if (mounted.map.exposure === undefined && exposure.mode === "auto" && exposure.compensation !== compensation) f.camera.setAutoExposure(compensation, 7, 15);
   viewmodel.update(f.camera, arsenal, {
     dt, eye, f: ax.f, r: ax.r, u: ax.u, lookX, lookY, speed: player.speed, walked: player.walked, grounded: player.grounded, sprinting: player.sprinting,
     vy: player.velocity.y, hidden: !alive || bare,

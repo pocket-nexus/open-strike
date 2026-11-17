@@ -1,9 +1,10 @@
-// First-person arms: a gloved hand (palm, four curled fingers, thumb, knuckle guard, wrist strap) and a sleeved forearm.
+// First-person arms: how a hand is posed on a weapon. The hand itself is sculpted by ../characters/hand.ts.
 //
 // A hand is posed in weapon space (millimetres) by its wrist, the direction to the knuckles, the back-of-hand direction,
 // finger curls, and thumb joints; the forearm runs from the wrist to `elbow`. The same builder makes both hands (the
 // left one mirrored). Hand space: x = towards the thumb, y = out of the back of the hand, z = wrist -> knuckles.
-import { type Kit, type Ring, type V3, add, basis, cross, dot, len, mix, mul, norm, rad, roundPath, sub } from "./kit.ts";
+import { type Kit, type V3, add, cross, dot, len, mul, norm, rad, sub } from "./kit.ts";
+import { type HandShape, sculptArm } from "../characters/hand.ts";
 
 export interface FingerPose {
   /** Flexion at the knuckle, middle and end joints (degrees towards the palm). */
@@ -99,84 +100,26 @@ export function describeHand(p: HandPose): string {
   return lines.join("\n");
 }
 
+/** The pose as the sculptor wants it: the hand's frame and its joints in hand space. */
+export function handShape(p: HandPose): HandShape {
+  const { s, n, f } = handFrame(p);
+  const sc = p.scale ?? 1, cup = p.cup ?? 0;
+  const inv = (w: V3): V3 => {
+    const d = sub(w, p.wrist);
+    return [dot(d, s) / sc, dot(d, n) / sc, dot(d, f) / sc];
+  };
+  const [mcp, ip, tip] = p.thumb.map(inv) as [V3, V3, V3];
+  return { side: p.side, frame: { o: p.wrist, x: s, y: n, z: f }, scale: sc, fingers: p.fingers.map((pose, i) => fingerJoints(i, pose, cup)), thumb: [THUMB_BASE, mcp, ip, tip] };
+}
+
+/** The first-person arm of a pose: the gloved hand and the sleeved forearm to `elbow` (sculpted: ../characters/hand.ts). */
 export function arm(k: Kit, p: HandPose): void {
   if (!k.hi) return;
-  k.part(p.side === "R" ? "arm_r" : "arm_l");
-  const { s, n, f } = handFrame(p);
-  const sc = p.scale ?? 1;
-  const seg = 8;
-  k.tag(`hand ${p.side}`);
-  k.at(basis(p.wrist, mul(s, sc), mul(n, sc), mul(f, sc)), () => {
-    // Palm: wrist to knuckles, thinner and wider towards the fingers; beyond the crease it folds with `cup`.
-    const cup = p.cup ?? 0;
-    k.mat("glove");
-    const ring = (z: number, cx: number, cy: number, a: number, b: number, e: number): Ring => {
-      const fold = z > CREASE ? cup : 0;
-      return { c: cupped([cx, cy, z], cup), a: [a, 0, 0], b: cuppedDir([0, b, 0], fold), e };
-    };
-    k.loft([ring(-6, 0, 0, 29, 19, 2.3), ring(14, 1, 0, 32, 19.5, 2.5), ring(44, 2, -0.5, 40, 18, 2.8), ring(68, 1, -0.5, 42.5, 15.5, 3), ring(88, 0.5, 0, 41.5, 12.5, 3)], { segs: 12, cap: ["flat", "round"], capLen: [0, 7] });
-    // Fingers.
-    p.fingers.forEach((pose, i) => {
-      const j = fingerJoints(i, pose, cup);
-      const r = RADIUS[i];
-      const start = add(j[0], cuppedDir([0, -0.5, -15], cup));
-      const tip = add(j[3], mul(norm(sub(j[3], j[2])), -r * 0.7));
-      const path = roundPath([start, j[0], j[1], j[2], tip], r * 0.95, 1);
-      k.tube(path, (t) => r * (1 - 0.2 * t), { segs: seg, cap: ["flat", "round"], up: [1, 0, 0] });
-    });
-    // Thumb. The ball of the thumb is a broad web from the palm's thumb-side edge to the knuckle (a wedge, not a
-    // pipe); then two short, fat phalanges.
-    const inv = (w: V3): V3 => {
-      const d = sub(w, p.wrist);
-      return [dot(d, s) / sc, dot(d, n) / sc, dot(d, f) / sc];
-    };
-    const [mcp, ip, tip] = p.thumb.map(inv);
-    const reach = len(sub(mcp, THUMB_BASE));
-    if (reach > THUMB_REACH) k.warnings.push(`hand ${p.side}: thumb knuckle ${reach.toFixed(0)} mm from the palm (max ${THUMB_REACH}): it will read as a hose`);
-    const along = norm(sub(mcp, THUMB_BASE));
-    // The web's base section lies along the palm edge (long in z), its end section is the thumb's knuckle.
-    const side = norm(cross(along, [0, 0, 1]));
-    k.loft(
-      [
-        { c: [8, -3, 30], a: [0, 0, 26], b: mul(side, 13), e: 2.4 },
-        { c: mix(THUMB_BASE, mcp, 0.45), a: mul(norm(sub([0, 0, 1], mul(along, along[2]))), 20), b: mul(side, 14.5), e: 2.3 },
-        { c: mix(THUMB_BASE, mcp, 0.85), a: mul(norm(sub([0, 0, 1], mul(along, along[2]))), 15), b: mul(side, 13.5), e: 2.2 },
-        { c: mcp, a: mul(norm(sub([0, 0, 1], mul(along, along[2]))), 13.2), b: mul(side, 12.8), e: 2 },
-      ],
-      { segs: 10, cap: ["flat", "round"], capLen: [0, 9] },
-    );
-    const end = add(tip, mul(norm(sub(tip, ip)), -9));
-    k.tube(roundPath([mix(THUMB_BASE, mcp, 0.8), mcp, ip, end], 8, 2), (t) => 12.8 - 2.2 * t, { segs: 8, cap: ["flat", "round"], up: [0, 1, 0] });
-    // Knuckle guard, back-of-hand pad, wrist strap and its tab.
-    k.mat("glove_shell");
-    k.at(basis([0, 0, CREASE], [1, 0, 0], cuppedDir([0, 1, 0], cup), cuppedDir([0, 0, 1], cup)), () => k.box([-34, 8, 81 - CREASE - 4], [36, 15.6, 100 - CREASE - 4], 3, { plane: "xz", round: 2, crease: 50 }));
-    k.box([-23, 12, 14], [26, 18.6, 44], 2.2, { plane: "xz" });
-    k.loft([ring(1, 0.6, 0, 32.2, 21, 2.4), ring(15, 1, 0, 33.6, 21.2, 2.5)], { segs: 12, cap: ["flat", "flat"] });
-    k.box([-6, 19.5, 2], [20, 23, 14], 1, { plane: "xz" });
-  });
-
-  // Forearm: glove gauntlet, sleeve cuff, sleeve to the elbow.
-  k.tag(`forearm ${p.side}`);
-  const d = norm(sub(p.elbow, p.wrist));
-  const L = len(sub(p.elbow, p.wrist));
-  const a = norm(sub(s, mul(d, dot(s, d))));
-  const b = cross(d, a);
-  const ring = (t: number, ra: number, rb: number, e = 2.2): Ring => ({ c: add(p.wrist, mul(d, t)), a: mul(a, ra * sc), b: mul(b, rb * sc), e });
-  k.mat("glove");
-  // Wrist: a ball between the hand and the forearm.
-  k.loft([ring(-12, 26, 18.5), ring(0, 29.5, 20.5), ring(20, 30, 21.5), ring(48, 32, 25)], { segs: 12, cap: ["round", "flat"], capLen: [10, 0] });
-  k.mat("sleeve");
-  k.loft([ring(38, 36, 29.5), ring(41, 37.5, 31), ring(56, 38.5, 32), ring(59, 37, 30.5)], { segs: 12, cap: ["flat", "flat"] });
-  const rings: Ring[] = [];
-  const steps = Math.max(4, Math.round((L - 52) / 30));
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const fold = i > 0 && i < steps ? (i % 2 ? 1.4 : -1.0) : 0;
-    rings.push(ring(52 + (L - 52) * t, 34.5 + 15 * t ** 0.8 + fold, 28 + 17 * t ** 0.8 + fold));
-  }
-  k.loft(rings, { segs: 12, cap: ["flat", "flat"] });
-  k.mat("glove_shell");
-  k.loft([ring(44, 38.4, 31.9), ring(52, 39, 32.5)], { segs: 12, cap: ["flat", "flat"] });
+  const shape = handShape(p);
+  const reach = len(sub(shape.thumb[1], THUMB_BASE));
+  if (reach > THUMB_REACH) k.warnings.push(`hand ${p.side}: thumb knuckle ${reach.toFixed(0)} mm from the palm (max ${THUMB_REACH}): it will read as a hose`);
+  const layers = sculptArm(shape, { cell: 3, elbow: p.elbow, watch: p.side === "L" });
+  for (const [mat, buf] of layers) k.raw(p.side === "R" ? "arm_r" : "arm_l", mat, buf);
 }
 
 /**

@@ -116,9 +116,10 @@ export class ViewModel {
     // The weapon's axes: the view's, turned by the sway, the kick, the reload's tilt, the run's carry.
     let wf = v.f, wr = v.r, wu = v.u;
     const rot = (axis: V3, angle: number) => { wf = turn(wf, axis, angle); wr = turn(wr, axis, angle); wu = turn(wu, axis, angle); };
-    rot(v.u, this.swayX * (1 - 0.7 * k) - this.run * 0.5);
+    // (From the hip the weapon is canted a little: its muzzle towards the middle of the view, its top to the left.)
+    rot(v.u, this.swayX * (1 - 0.7 * k) - this.run * 0.5 + 0.045 * (1 - k));
     rot(wr, -this.swayY * (1 - 0.7 * k) + punch * 1.4 - draw * 0.7 - down * 0.28 - this.run * 0.32);
-    rot(wf, down * 0.42);
+    rot(wf, down * 0.42 - 0.07 * (1 - k));
     const origin = mad(mad(mad(v.eye, v.r, right), v.u, upward), v.f, ahead);
     // (Weapon space: +X right, +Y up, -Z forward.)
     const wz = scale(wf, -1);
