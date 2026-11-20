@@ -7,6 +7,7 @@ import { FLAG, RULES, TEAM, WEAPONS, damageAt, type Mode, type WeaponDef, type Z
 import type { AnyMap } from "./maps/index.ts";
 import type { Actor, Match, Source } from "./match.ts";
 import type { V3 } from "./vec.ts";
+import { push } from "./soldiers.ts";
 
 const NAMES = ["Vega", "Moss", "Kite", "Juno", "Rook", "Orin", "Tamsin", "Bly"];
 const WALK = 2.7;
@@ -259,11 +260,21 @@ export class Practice implements Source {
    * Puts the bots where a picture or a test wants them, standing still: one entry a bot ({ at, yaw, pitch?, flags?,
    * speed?, weapon?, team?, fire?: a point it shoots at now }).
    */
-  stage(list: { at: V3; yaw: number; pitch?: number; flags?: number; speed?: number; weapon?: number; team?: "ember" | "azure"; fire?: V3 }[]): void {
+  stage(list: { at: V3; yaw: number; pitch?: number; flags?: number; speed?: number; weapon?: number; team?: "ember" | "azure"; fire?: V3; die?: Zone }[]): void {
     this.passive = true;
     this.bots.forEach((b, i) => {
       const s = list[i];
+      if (s?.die) {
+        // Shot dead now, by the player, where it stands (and it stays down).
+        const a = b.actor;
+        a.alive = false;
+        a.soldier.dead = 0;
+        a.soldier.blow = { from: [this.mine.x, this.mine.y + 1.4, this.mine.z], zone: s.die, push: push(["carbine", "shotgun", "marksman"][s.weapon ?? 0]!) };
+        b.respawnAt = Infinity;
+        return;
+      }
       if (!s) { b.at.set(0, -150, 0); b.yaw = 0; b.staged = [0, -150, 0, 0, 0, 0, 0, 0]; return; }
+      if (!b.actor.alive) { b.actor.alive = true; b.actor.health = this.match.rules.health; b.actor.soldier.dead = -1; }
       b.at.set(s.at[0], s.at[1], s.at[2]);
       b.yaw = s.yaw;
       b.staged = [s.at[0], s.at[1], s.at[2], s.yaw, s.pitch ?? 0, s.speed ?? 0, s.flags ?? 0, s.weapon ?? 0];
@@ -294,6 +305,7 @@ export class Practice implements Source {
       actor.alive = false;
       actor.deaths++;
       actor.soldier.dead = 0;
+      actor.soldier.blow = { from: [this.mine.x, this.mine.y + (this.mineCrouched ? 1.0 : 1.4), this.mine.z], zone, push: push(weapon.id) };
       b.respawnAt = this.clock + m.rules.respawn;
       m.me.kills++;
       if (m.me.team) m.score[m.me.team] = (m.score[m.me.team] ?? 0) + 1;

@@ -21,7 +21,7 @@ import { Menu } from "./src/menu.ts";
 import { Session, type Launch } from "./src/net.ts";
 import { Player } from "./src/player.ts";
 import { Practice } from "./src/practice.ts";
-import { SLOTS, Soldiers, animate, newSoldier, type SoldierState } from "./src/soldiers.ts";
+import { SLOTS, Soldiers, animate, newSoldier, push, type SoldierState } from "./src/soldiers.ts";
 import { preloadSounds, sound, soundFrame } from "./src/sound.ts";
 import { mad, norm, sub, viewAxes, type V3 } from "./src/vec.ts";
 import { ViewModel, metaOf } from "./src/viewmodel.ts";
@@ -107,11 +107,13 @@ function spawn(why: "join" | "respawn" | "round"): void {
   sound(why === "round" ? "round.start" : "respawn");
 }
 
-function died(by: Actor | null, _weapon: string): void {
+function died(by: Actor | null, weapon: string): void {
   arsenal.restock();
-  // The body stays where it fell; the camera steps back from it, turned so that whoever did it is in the picture.
+  // The body falls where it stood, knocked away from whoever did it; the camera steps back from it, turned so that
+  // they are in the picture.
   const feet: V3 = [player.position.x, player.position.y, player.position.z];
-  Object.assign(body, { team: match.me.team, position: feet, yaw: player.yaw, pitch: 0, speed: 0, flags: 0, weapon: arsenal.current, crouch: player.crouched ? 1 : 0, dead: 0 });
+  const from: V3 | null = by?.pose ? [by.pose[0]!, by.pose[1]! + 1.4, by.pose[2]!] : null;
+  Object.assign(body, { team: match.me.team, position: feet, yaw: player.yaw, pitch: player.pitch, speed: 0, flags: player.crouched ? 1 : 0, weapon: arsenal.current, crouch: player.crouched ? 1 : 0, dead: 0, blow: { from, zone: "body", push: push(weapon) } });
   let away: V3 = [Math.sin(player.yaw), 0, Math.cos(player.yaw)];
   if (by?.pose) away = norm([feet[0] - by.pose[0]!, 0, feet[2] - by.pose[2]!]);
   const head: V3 = [feet[0], feet[1] + 1.5, feet[2]];
@@ -323,7 +325,7 @@ function frame(f: FrameContext<unknown>): void {
   const ax = viewAxes(yaw, pitch);
   if (!alive && deathCam) {
     body.dead += dt;
-    soldiers.pose(body);
+    soldiers.pose(body, dt);
     f.camera.position.set(...deathCam.from);
     f.camera.lookAt(...deathCam.at);
     f.camera.fov = FOV;
@@ -364,7 +366,7 @@ function frame(f: FrameContext<unknown>): void {
     a.soldier.fired += dt;
     animate(a.soldier, a.pose, dt);
     soldierSounds(a);
-    soldiers.pose(a.soldier);
+    soldiers.pose(a.soldier, dt);
     used[a.soldier.slot] = 1;
   }
   for (let s = 0; s < used.length; s++) if (!used[s]) soldiers.hide(s);
@@ -500,7 +502,7 @@ export default defineGame({
         status: match.status, notice: match.notice, room: session.roomStatus, code: match.code, mode: match.mode, map: mounted.map.id, time: Math.round(match.time()),
         me: { id: match.me.id, team: match.me.team, alive: match.me.alive, health: match.me.health, kills: match.me.kills, deaths: match.me.deaths },
         actors: [...match.actors.values()].map((a) => ({ id: a.id, name: a.name, team: a.team, alive: a.alive, health: a.health, kills: a.kills, at: a.pose ? [r(a.pose[0]!), r(a.pose[1]!), r(a.pose[2]!)] : null, yaw: a.pose ? r(a.pose[3]!) : 0, flags: a.pose?.[6] ?? 0, weapon: a.pose?.[7] ?? 0 })),
-        round: match.round, score: match.score, rtt: Math.round(match.rtt),
+        round: match.round, score: match.score, rtt: Math.round(match.rtt), ragdolls: soldiers.ragdolls(),
         maps: maps().map((m) => m.id), user: maps().filter(isUserMap).map((m) => ({ id: m.id, hash: m.hash, glb: m.glb })), library: library.status,
         imports: library.done, importing: library.progress, notice2: library.notice?.text ?? null, menu: { open: menu.open, items: menu.items() },
       })}`);

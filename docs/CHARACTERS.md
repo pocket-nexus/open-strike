@@ -71,6 +71,23 @@ not tell you what a shape looks like.
   starts (a model that first appears in a frame is loaded in that frame, and a frame's script has 50 ms); each body is
   posed once then, so it is a pose of its own and posing it never rebuilds the scene. `build.ts` prints the counts.
 
+## Death
+
+A soldier that dies becomes a ragdoll (`src/ragdoll.ts`): its skeleton as points (Verlet, constraints projected a
+few times a step), started from its last live pose and moving as it moved, struck by the shot that killed it (`blow`
+on its state: where the shooter was, the zone, how hard by weapon, `push` in `src/soldiers.ts`; set by the room's
+`kill` event, by practice, and for the player's own body). The pelvis and the chest are rigid, joined at the waist;
+knees and elbows are hinges that bend one way and not all the way; the neck, the spine and the hips are cones. Angle
+limits are corrected softly (`SOFT`) and no point moves faster than `FASTEST`: a hard correction is a kick in Verlet.
+The map is felt through a ray a point a frame (none for a point that has not moved); a contact plane holds only until
+the next frame's ray. The weapon leaves the hands and falls as a stick of its own. Once the body has lain still for
+half a second it sleeps: no pose, no skinning.
+
+`soldiers.ts` turns the points into the parts' frames (`limp`): the same skinned body and gear as alive.
+`node tools/test-ragdoll.ts` checks four deaths on numbers (down, on the floor, near where they stood, asleep) and
+prints the frame script's cost; `node tools/shots.ts --only death-9,death-24,death-48,death-180,death-close` shows a
+fall at 0.15, 0.4, 0.8 and 3 s. Tune by looking at those, not by numbers alone.
+
 ## The first-person view
 
 `src/viewmodel.ts` places the weapon against the camera (`hip` in `src/config.ts` is where the grip sits from the
