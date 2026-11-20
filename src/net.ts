@@ -21,6 +21,7 @@ import { APP, ENDPOINT, MAX_PLAYERS, POSE, RULES, TEAMS, VERSION, WEAPONS, invit
 import { DEFAULT_MAP, findMap, mapById, type AnyMap } from "./maps/index.ts";
 import { cleanName, type Actor, type Match, type Source } from "./match.ts";
 import type { V3 } from "./vec.ts";
+import { push } from "./soldiers.ts";
 
 export interface Launch {
   room?: unknown; name?: unknown; api?: unknown; mode?: unknown; map?: unknown; practice?: unknown; id?: unknown;
@@ -67,6 +68,8 @@ interface FpsPlayer { team?: string; health: number; alive: boolean; kills: numb
 class Online implements Source {
   private readonly prev = { alive: false, round: -1, phase: "", spawned: false };
   private lastKill: { victim: number; killer: number; weapon: string } | null = null;
+  /** This player's last pose (where its shots come from). */
+  private mine: number[] | null = null;
   private teams: string[] = [...TEAMS];
   private readonly room: Room;
   private readonly match: Match;
@@ -134,6 +137,10 @@ class Online implements Source {
       }
       case "kill": {
         this.lastKill = { victim: d.victim, killer: d.killer, weapon: String(d.weapon) };
+        // The body falls away from the shot (its ragdoll takes the blow).
+        const victim = m.actors.get(d.victim);
+        const by = d.killer === m.me.id ? this.mine : (m.actors.get(d.killer)?.pose ?? null);
+        if (victim && d.killer !== d.victim) victim.soldier.blow = { from: by ? [by[POSE.x]!, by[POSE.y]! + 1.4, by[POSE.z]!] : null, zone: String(d.zone ?? "body"), push: push(String(d.weapon)) };
         const how = m.weapons[String(d.weapon)]?.title ?? String(d.weapon);
         const text = d.killer && d.killer !== d.victim ? `${m.nameOf(d.killer)}  ›  ${m.nameOf(d.victim)}   ${how}${d.zone === "head" ? " · headshot" : ""}` : `${m.nameOf(d.victim)} ${d.weapon === "team" ? "changed sides" : "fell"}`;
         m.say(text, d.killer === m.me.id ? "accent" : d.victim === m.me.id ? "bad" : "default");
@@ -201,6 +208,7 @@ class Online implements Source {
   }
 
   pose(pose: number[]): void {
+    this.mine = pose;
     this.room.pose(pose);
   }
 

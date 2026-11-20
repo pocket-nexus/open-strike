@@ -65,7 +65,7 @@ docs/NETCODE.md). Numbers live in `src/config.ts`.
   extends. `THREERT_ENGINE` / `THREERT_SDK` override it for one run. No local path goes into a committed file.
 - Build with the engine's toolchain: `node tools/build.ts` (`@threert/net` from ThreeRT's SDK, as the CLI does).
 - Typecheck: `<engine>/node_modules/.bin/tsc -p .`.
-- Tests (the real game, headless, a script as the app): `node tools/test-move.ts`, `test-weapons.ts`,
+- Tests (the real game, headless, a script as the app): `node tools/test-move.ts`, `test-weapons.ts`, `test-ragdoll.ts`,
   `test-match.ts` (needs rooms: `--api https://threert.app`, or a local rooms server, which needs access to the
   ThreeRT platform), `test-maps.ts` (its room part is skipped without rooms), `node --test tools/import-bsp.test.ts`.
   Run the ones a change touches; all of them before a release.

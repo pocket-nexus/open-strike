@@ -91,6 +91,7 @@ sockets for the rooms, a temporary directory as the store, scripted folder picks
 ```
 node tools/test-move.ts       # movement on numbers, at 30 / 60 / 120 Hz (the Range map)
 node tools/test-weapons.ts    # rate of fire, recoil, bloom, reloads, the sights, damage by zone, the sounds, at 30 / 60 / 120 Hz
+node tools/test-ragdoll.ts    # deaths: bodies fall, land on the floor, stay near where they stood, lie still; what it costs
 node tools/test-match.ts      # two players in a real room: hits, deaths, respawns, the score, a round won; the ways in
 node tools/test-maps.ts       # the Maps menu: import a folder in the game, practice and a room on the map, remove it
 node --test tools/import-bsp.test.ts    # the converter on maps made by the test
@@ -106,7 +107,7 @@ rooms, `test-maps` leaves its room part out and says so. `node tools/shots.ts` t
 ## Releasing
 
 ```
-node tools/test-move.ts && node tools/test-weapons.ts && node tools/test-maps.ts && node --test tools/import-bsp.test.ts
+node tools/test-move.ts && node tools/test-weapons.ts && node tools/test-ragdoll.ts && node tools/test-maps.ts && node --test tools/import-bsp.test.ts
 node tools/test-match.ts --api https://threert.app      # two players through the real rooms
 node tools/check-no-imported-maps.ts                    # imported maps never leave this machine (docs/MAPS.md)
 threert publish --yes                                   # as the account that owns `openstrike`

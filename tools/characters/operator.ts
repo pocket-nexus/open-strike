@@ -1,13 +1,15 @@
 // The soldier: a modern operator in a high-cut helmet with a headset and goggles over a balaclava, a combat shirt
 // under a plate carrier with its pouches, a radio and a pack, a belt with a holster, combat trousers with knee pads,
-// gloves and boots. Sculpted here as shapes (sdf.ts), one function for each of the body's rigid parts.
+// gloves and boots. Sculpted here as shapes (sdf.ts), one function for each part of the body.
 //
 // Every part is in its own space (src/character/rig.ts): millimetres, the origin at the joint the part turns about,
-// +X the soldier's right, +Y up, +Z the back. A limb hangs down -Y. Where two parts meet there is a ball of cloth
-// about the joint on both, so no pose opens a gap. The right limbs are sculpted; the left ones are their mirror
-// images, except what only one side has.
+// +X the soldier's right, +Y up, +Z the back. A limb hangs down -Y. Where two parts meet both have a ball of cloth
+// about the joint: the clothed body is all the parts' cloth made one (skeleton.ts puts the parts in the bind pose,
+// skin.ts), so the balls become the shoulder, the elbow, the knee. The right limbs are sculpted; the left ones are
+// their mirror images, except what only one side has.
 //
-// A part is a list of layers: a shape, the material it is made of, and how fine its triangles are. Layers may pass
+// A part is a list of layers: a shape, the material it is made of, and how fine its triangles are. A layer marked
+// `skin` is cloth that bends with the body (the skinned mesh); the rest is gear, rigid on its part. Layers may pass
 // through each other (a pouch sits in the carrier, the carrier on the shirt): what ends up inside another layer is
 // left out when the part is meshed.
 import { RIG, type PartName } from "../../src/character/rig.ts";
@@ -16,7 +18,7 @@ import {
   ramp, sphere, torus, union,
 } from "./sdf.ts";
 
-export interface Layer { mat: string; shape: Sdf; /** Triangle size, when not the part's. */ cell?: number }
+export interface Layer { mat: string; shape: Sdf; /** Triangle size, when not the part's. */ cell?: number; /** Cloth of the skinned body. */ skin?: boolean }
 export interface PartDef { /** Triangle size, millimetres. */ cell: number; min: V3; max: V3; layers: Layer[] }
 
 const mm = (m: number) => Math.round(m * 1000);
@@ -62,7 +64,7 @@ function pelvis(): PartDef {
   return {
     cell: 8, min: [-240, -150, -180], max: [260, 190, 190],
     layers: [
-      { mat: "fabric", shape: cloth },
+      { mat: "fabric", shape: cloth, skin: true },
       { mat: "nylon", shape: union(belt, pistolMags, dump, medical, smoke) },
       { mat: "hard", shape: union(buckle, holster, smokeTop), cell: 5 },
       { mat: "metal", shape: union(magTops, pistol), cell: 5 },
@@ -113,8 +115,8 @@ function chest(): PartDef {
   return {
     cell: 8, min: [-290, -110, -230], max: [290, 640, 300],
     layers: [
-      { mat: "fabric", shape: cloth },
-      { mat: "mask", shape: gaiter, cell: 5 },
+      { mat: "fabric", shape: cloth, skin: true },
+      { mat: "mask", shape: gaiter, cell: 5, skin: true },
       { mat: "nylon", shape: union(carrier, magPouches, admin, pouch, pack, handle) },
       { mat: "nylon", shape: straps, cell: 4 },
       { mat: "accent", shape: union(patch, backPatch), cell: 4 },
@@ -177,7 +179,7 @@ function upperArm(): PartDef {
   // A pocket on the outside with the team's patch on its hook panel.
   const pocket = over(arm, 7, box([60, -150, 0], [40, 50, 36], 8), 3);
   const patch = over(arm, 9.6, box([60, -142, 0], [40, 30, 27], 4), 1.5);
-  return { cell: 7, min: [-90, -L - 70, -90], max: [100, 90, 90], layers: [{ mat: "fabric", shape: blend(5, cloth, pocket) }, { mat: "accent", shape: patch, cell: 4 }] };
+  return { cell: 7, min: [-90, -L - 70, -90], max: [100, 90, 90], layers: [{ mat: "fabric", shape: blend(5, cloth, pocket), skin: true }, { mat: "accent", shape: patch, cell: 4 }] };
 }
 
 function forearm(): PartDef {
@@ -190,7 +192,7 @@ function forearm(): PartDef {
   // The elbow pad: a hard cap on a padded base, strapped below the elbow.
   const cap = displaced(ellipsoid([0, -10, 40], [38, 58, 22]), (_x, y) => -1.2 * ramp(0.8, 0.97, Math.sin(y * 0.3)));
   const base = union(over(arm, 5, box([0, -12, 34], [56, 76, 40], 20), 4), over(arm, 3.5, slab(-74, -54), 1.5));
-  return { cell: 7, min: [-80, -L - 60, -80], max: [80, 80, 90], layers: [{ mat: "fabric", shape: cloth }, { mat: "glove", shape: wrist }, { mat: "nylon", shape: base }, { mat: "hard", shape: cap, cell: 4.5 }] };
+  return { cell: 7, min: [-80, -L - 60, -80], max: [80, 80, 90], layers: [{ mat: "fabric", shape: cloth, skin: true }, { mat: "glove", shape: wrist }, { mat: "nylon", shape: base }, { mat: "hard", shape: cap, cell: 4.5 }] };
 }
 
 function thigh(): PartDef {
@@ -200,7 +202,7 @@ function thigh(): PartDef {
   const cloth = displaced(leg, (x, y, z) => creases(x, y, z) * (0.5 + 0.5 * ramp(-150, -40, y) + 0.5 * ramp(-330, -420, y)));
   // The cargo pocket on the outside, its flap.
   const cargo = blend(5, box([84, -238, 6], [16, 68, 54], 12), box([89, -180, 6], [14, 13, 57], 5));
-  return { cell: 8, min: [-130, -L - 90, -130], max: [140, 120, 130], layers: [{ mat: "fabric", shape: blend(12, cloth, cargo) }] };
+  return { cell: 8, min: [-130, -L - 90, -130], max: [140, 120, 130], layers: [{ mat: "fabric", shape: blend(12, cloth, cargo), skin: true }] };
 }
 
 function shin(): PartDef {
@@ -212,7 +214,7 @@ function shin(): PartDef {
   // The knee pad: a ribbed hard cap on a padded base, strapped under the knee.
   const cap = displaced(ellipsoid([0, -8, -56], [54, 74, 30]), (_x, y) => -1.5 * ramp(0.8, 0.97, Math.sin(y * 0.24)));
   const base = union(over(leg, 6, box([0, -15, -46], [70, 94, 48], 24), 4), over(leg, 3.5, slab(-102, -80), 1.5));
-  return { cell: 7, min: [-95, -L + 60, -115], max: [95, 95, 105], layers: [{ mat: "fabric", shape: cloth }, { mat: "nylon", shape: base }, { mat: "hard", shape: cap, cell: 4.5 }] };
+  return { cell: 7, min: [-95, -L + 60, -115], max: [95, 95, 105], layers: [{ mat: "fabric", shape: cloth, skin: true }, { mat: "nylon", shape: base }, { mat: "hard", shape: cap, cell: 4.5 }] };
 }
 
 function foot(): PartDef {
@@ -233,8 +235,8 @@ function foot(): PartDef {
 /** A part mirrored to the left side. */
 const left = (p: PartDef): PartDef => ({ ...p, min: [-p.max[0], p.min[1], p.min[2]], max: [-p.min[0], p.max[1], p.max[2]], layers: p.layers.map((l) => ({ ...l, shape: flipped(l.shape) })) });
 
-/** The sculpted parts of the body. The hands are made from a weapon's hand poses (build.ts). */
-export function operator(): Partial<Record<PartName, PartDef>> {
+/** The sculpted parts of the body. The hands are made from a weapon's hand poses (hands.ts). */
+export function operator(): Record<Exclude<PartName, "hand_r" | "hand_l">, PartDef> {
   return {
     pelvis: pelvis(), chest: chest(), head: head(),
     upper_r: upperArm(), upper_l: left(upperArm()), fore_r: forearm(), fore_l: left(forearm()),

@@ -8,5 +8,20 @@
     -0.0686,
     -0.0135,
     0.0477
+  ],
+  "gear": [
+    "pelvis",
+    "chest",
+    "head",
+    "upper_r",
+    "upper_l",
+    "fore_r",
+    "fore_l",
+    "hand_r",
+    "hand_l",
+    "shin_r",
+    "shin_l",
+    "foot_r",
+    "foot_l"
   ]
 }

@@ -73,8 +73,11 @@ export function weave(strength = 1.2): Uint8Array {
  * The mesh with texture coordinates: every triangle mapped along the axis its face looks along most, the picture
  * `repeat` millimetres across. Vertices on a seam are doubled.
  */
-export function mapped(b: Buf, repeat: number): Buf & { uv: number[] } {
-  const out = { pos: [] as number[], nrm: [] as number[], idx: [] as number[], uv: [] as number[] };
+export function mapped<B extends Buf>(b: B, repeat: number): B & { uv: number[] } {
+  // (Other attributes, four numbers a vertex, go with the vertices: a skinned mesh's joints and weights.)
+  const extra = (["joints", "weights"] as const).filter((k) => k in b);
+  const out = { pos: [] as number[], nrm: [] as number[], idx: [] as number[], uv: [] as number[], ...Object.fromEntries(extra.map((k) => [k, [] as number[]])) } as unknown as B & { uv: number[] };
+  const src = b as unknown as Record<string, number[]>, dst = out as unknown as Record<string, number[]>;
   const seen = new Map<number, number>();
   for (let t = 0; t < b.idx.length; t += 3) {
     const [a, c, d] = [b.idx[t]!, b.idx[t + 1]!, b.idx[t + 2]!];
@@ -91,6 +94,7 @@ export function mapped(b: Buf, repeat: number): Buf & { uv: number[] } {
         out.pos.push(p(i, 0), p(i, 1), p(i, 2));
         out.nrm.push(b.nrm[i * 3]!, b.nrm[i * 3 + 1]!, b.nrm[i * 3 + 2]!);
         out.uv.push((axis === 0 ? p(i, 2) : p(i, 0)) / repeat, (axis === 1 ? p(i, 2) : p(i, 1)) / repeat);
+        for (const k of extra) for (let q = 0; q < 4; q++) dst[k]!.push(src[k]![i * 4 + q]!);
       }
       out.idx.push(j);
     }

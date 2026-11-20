@@ -1,8 +1,11 @@
 // The soldier's skeleton: the proportions the game poses with (src/soldiers.ts) and the model is sculpted to
 // (tools/characters/operator.ts). Metres. One body: change a number here and both follow.
 //
-// A soldier is fifteen rigid parts. Each part's model has its origin at the joint it turns about, +X to the
-// soldier's right, +Y up, +Z to the back when the soldier stands at rest; a limb hangs down -Y from its joint.
+// A soldier has fifteen parts, each with its own frame: the origin at the joint it turns about, +X to the soldier's
+// right, +Y up, +Z to the back when the soldier stands at rest; a limb hangs down -Y from its joint. The game works
+// out a frame for every part each frame. The clothed body is one skinned mesh over the parts of `SKELETON` (its
+// joints are those frames: the cloth bends at the joints); the gear on a part (the helmet, the plate carrier, the
+// pads, the gloves, the boots) is rigid, a model of its own placed at the part's frame.
 
 export const RIG = {
   /** The pelvis' origin above the feet, standing; how far a full crouch lowers it. */
@@ -31,10 +34,20 @@ export const RIG = {
 export const PARTS = ["pelvis", "chest", "head", "upper_r", "upper_l", "fore_r", "fore_l", "hand_r", "hand_l", "thigh_r", "thigh_l", "shin_r", "shin_l", "foot_r", "foot_l"] as const;
 export type PartName = (typeof PARTS)[number];
 
+/** The skinned body's joints, each with its parent (the root's is null): nodes of the model named as the parts. */
+export const SKELETON = {
+  pelvis: null, chest: "pelvis", head: "chest",
+  upper_r: "chest", upper_l: "chest", fore_r: "upper_r", fore_l: "upper_l",
+  thigh_r: "pelvis", thigh_l: "pelvis", shin_r: "thigh_r", shin_l: "thigh_l",
+} as const satisfies Partial<Record<PartName, PartName | null>>;
+export type JointName = keyof typeof SKELETON;
+export const JOINTS = Object.keys(SKELETON) as JointName[];
+
 /** The outfits the model comes in: one for each team, one for a soldier of no team. */
 export const OUTFITS = ["ember", "azure", "ranger"] as const;
 export type Outfit = (typeof OUTFITS)[number];
 
-/** The model file, and the name of a part's node in it for an outfit. */
+/** The model file; the skinned body's node in it for an outfit, and a part's gear's. */
 export const OPERATOR_MODEL = "assets/characters/operator.glb";
+export const bodyNode = (outfit: Outfit): string => `body.${outfit}`;
 export const partNode = (part: PartName, outfit: Outfit): string => `${part}.${outfit}`;

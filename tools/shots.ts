@@ -11,7 +11,7 @@ import { build } from "./build.ts";
 import { startLive, type Live } from "./lib/live.ts";
 
 type V3 = [number, number, number];
-interface Bot { at: V3; yaw: number; pitch?: number; flags?: number; speed?: number; weapon?: number; team?: "ember" | "azure"; fire?: V3 }
+interface Bot { at: V3; yaw: number; pitch?: number; flags?: number; speed?: number; weapon?: number; team?: "ember" | "azure"; fire?: V3; die?: "head" | "body" | "limb" }
 export interface Picture {
   name: string;
   at: V3; yaw: number; pitch?: number;
@@ -21,6 +21,8 @@ export interface Picture {
   /** What the player does before the picture: keys held, buttons held, for how many frames; and whether it fires in the frame taken. */
   act?: { keys?: string[]; buttons?: number[]; frames: number; weapon?: string }[];
   fire?: boolean;
+  /** The bots marked `die` are shot dead this many frames before the picture. */
+  die?: number;
 }
 const deg = (d: number) => (d * Math.PI) / 180;
 const CROUCH = 1, SPRINT = 32;
@@ -90,6 +92,28 @@ export const STUDIES: Picture[] = [
       { at: [-15.4, 0, -2.9], yaw: deg(180), pitch: 0.6, team: "azure", weapon: 0 },
     ],
   },
+  // The joints close up, side on: a crouch (hips, knees, waist), a stance with the weapon (shoulders, elbows), a run.
+  {
+    name: "joints", at: [-17.2, 0, -4.9], yaw: deg(-90), pitch: -0.12, bare: true,
+    bots: [
+      { at: [-15.6, 0, -5.55], yaw: deg(150), team: "ember", weapon: 0, flags: CROUCH },
+      { at: [-15.5, 0, -4.75], yaw: deg(165), team: "azure", weapon: 0 },
+      { at: [-15.3, 0, -3.95], yaw: deg(-170), team: "ember", weapon: 1, speed: 6.4, flags: SPRINT },
+    ],
+  },
+  // Deaths: three soldiers shot (head, body, legs; one running, one crouched), 0.15 s, 0.4 s, 0.8 s and 3 s after.
+  ...[9, 24, 48, 180].map((n): Picture => ({
+    name: `death-${n}`, at: [-17.6, 0, -4.9], yaw: deg(-90), pitch: -0.1, bare: true, die: n,
+    bots: [
+      { at: [-15.2, 0, -5.8], yaw: deg(100), team: "ember", weapon: 0, die: "head" },
+      { at: [-14.8, 0, -4.8], yaw: deg(70), team: "azure", weapon: 1, flags: CROUCH, die: "body" },
+      { at: [-14.6, 0, -3.7], yaw: deg(160), team: "ember", weapon: 2, speed: 4.6, die: "limb" },
+    ],
+  })),
+  {
+    name: "death-close", at: [-16.3, 0, -5.0], yaw: deg(-90), pitch: -0.45, bare: true, die: 240,
+    bots: [{ at: [-14.9, 0, -5.1], yaw: deg(100), team: "azure", weapon: 0, die: "head" }, { at: [-14.6, 0, -4.1], yaw: deg(40), team: "ember", weapon: 1, flags: CROUCH, die: "body" }],
+  },
   { name: "fp-carbine", at: [-18.8, 0, -3.3], yaw: deg(-86), pitch: 0.03, bots: [] },
   { name: "fp-shotgun", at: [-18.8, 0, -3.3], yaw: deg(-86), pitch: 0.03, bots: [], act: [{ keys: ["2"], frames: 50 }] },
   { name: "fp-dmr", at: [-18.8, 0, -3.3], yaw: deg(-86), pitch: 0.03, bots: [], act: [{ keys: ["3"], frames: 50 }] },
@@ -102,8 +126,13 @@ export async function take(live: Live, p: Picture, path: string, frames: number)
   live.input({ keys: [], buttons: [] });
   live.send({ cmd: "lockstep", dt: 1 / 60 });
   live.send({ cmd: "event", type: "place", payload: { at: p.at, yaw: p.yaw, pitch: p.pitch ?? 0, bare: p.bare === true } });
-  live.send({ cmd: "event", type: "stage", payload: { bots: p.bots ?? [] } });
+  const alive = (p.bots ?? []).map(({ die: _, ...b }) => b);
+  live.send({ cmd: "event", type: "stage", payload: { bots: p.die === undefined ? p.bots ?? [] : alive } });
   await live.step(420);          // (the exposure adapts to the place, as an eye does: several seconds)
+  if (p.die !== undefined) {
+    live.send({ cmd: "event", type: "stage", payload: { bots: p.bots ?? [] } });
+    await live.step(p.die);
+  }
   for (const a of p.act ?? []) {
     live.input({ keys: a.keys ?? [], buttons: a.buttons ?? [], pressed: [...(a.keys ?? []), ...(a.buttons ?? []).map((b) => `Mouse${b}`)] });
     await live.step(1);
