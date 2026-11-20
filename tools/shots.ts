@@ -90,6 +90,15 @@ export const STUDIES: Picture[] = [
       { at: [-15.4, 0, -2.9], yaw: deg(180), pitch: 0.6, team: "azure", weapon: 0 },
     ],
   },
+  // The joints close up, side on: a crouch (hips, knees, waist), a stance with the weapon (shoulders, elbows), a run.
+  {
+    name: "joints", at: [-17.2, 0, -4.9], yaw: deg(-90), pitch: -0.12, bare: true,
+    bots: [
+      { at: [-15.6, 0, -5.55], yaw: deg(150), team: "ember", weapon: 0, flags: CROUCH },
+      { at: [-15.5, 0, -4.75], yaw: deg(165), team: "azure", weapon: 0 },
+      { at: [-15.3, 0, -3.95], yaw: deg(-170), team: "ember", weapon: 1, speed: 6.4, flags: SPRINT },
+    ],
+  },
   { name: "fp-carbine", at: [-18.8, 0, -3.3], yaw: deg(-86), pitch: 0.03, bots: [] },
   { name: "fp-shotgun", at: [-18.8, 0, -3.3], yaw: deg(-86), pitch: 0.03, bots: [], act: [{ keys: ["2"], frames: 50 }] },
   { name: "fp-dmr", at: [-18.8, 0, -3.3], yaw: deg(-86), pitch: 0.03, bots: [], act: [{ keys: ["3"], frames: 50 }] },

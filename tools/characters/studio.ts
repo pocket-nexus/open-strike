@@ -9,7 +9,7 @@ import { dirname, join, resolve } from "node:path";
 import { ENGINE, RENDERER, ROOT } from "../lib/engine.ts";
 import { build } from "../build.ts";
 
-export interface Item { uri: string; nodes?: string[]; position?: [number, number, number]; quaternion?: [number, number, number, number] }
+export interface Item { uri: string; nodes?: string[]; position?: [number, number, number]; quaternion?: [number, number, number, number]; /** A pose (`AnimationPose`). */ animation?: object }
 export interface Camera { position: [number, number, number]; target: [number, number, number]; fov?: number }
 
 export async function studio(items: Item[], camera: Camera, out: string, o: { spp?: number; sun?: [number, number]; width?: number; height?: number } = {}): Promise<void> {
@@ -29,7 +29,7 @@ export default defineGame({ state: {}, handlers: {}, setup() {
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
   for (const it of ITEMS) {
-    const m = new GLTFModel(it.uri, it.nodes ? { nodes: it.nodes } : {});
+    const m = new GLTFModel(it.uri, { ...(it.nodes ? { nodes: it.nodes } : {}), ...(it.animation ? { animation: it.animation } : {}) });
     if (it.position) m.position.set(it.position[0], it.position[1], it.position[2]);
     if (it.quaternion) m.quaternion.set(it.quaternion[0], it.quaternion[1], it.quaternion[2], it.quaternion[3]);
     scene.add(m);

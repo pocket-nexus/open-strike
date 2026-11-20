@@ -1,6 +1,8 @@
 // The other players' bodies: the operator model (tools/characters, assets/characters/operator.glb) posed by the game
-// every frame from what the room sends (position, yaw, pitch, crouch, speed, weapon). The model is fifteen rigid
-// parts (src/character/rig.ts); a pose is a place and a turn for each of them, worked out here.
+// every frame from what the room sends (position, yaw, pitch, crouch, speed, weapon). A pose is a frame for each of
+// the body's fifteen parts (src/character/rig.ts), worked out here: the skinned body's joints are put at them (the
+// engine skins the cloth to them, so it bends at the joints), and the gear (helmet, carrier, pads, gloves, boots) is
+// placed at them.
 //
 // The pose is procedural: the legs stride with the distance covered (feet placed by two-bone IK, so a crouch bends
 // the knees over planted feet), the body stands bladed behind the weapon, the chest leans with the aim, the head
@@ -9,8 +11,8 @@
 // torso capsule, limb capsules (zones head / body / limb).
 import { GLTFModel, type Scene } from "@threert/scene";
 import { FLAG, LOADOUT, POSE, WEAPON_MODEL, type Team, type Zone } from "./config.ts";
-import { OPERATOR_MODEL, OUTFITS, PARTS, RIG, partNode, type Outfit, type PartName } from "./character/rig.ts";
-import handsJson from "./character/meta.json";
+import { JOINTS, OPERATOR_MODEL, OUTFITS, RIG, bodyNode, partNode, type Outfit, type PartName } from "./character/rig.ts";
+import metaJson from "./character/meta.json";
 import { add, basisQuat, cross, dot, len, mad, norm, rayCapsule, raySphere, scale, sub, turn, type V3 } from "./vec.ts";
 import { WEAPON_META } from "./viewmodel.ts";
 
@@ -19,7 +21,8 @@ import { WEAPON_META } from "./viewmodel.ts";
 export const SLOTS = 12;
 
 const UP: V3 = [0, 1, 0];
-const HANDS = handsJson as { wristR: V3; wristL: V3 };
+const META = metaJson as { wristR: V3; wristL: V3; gear: PartName[] };
+const HANDS = META;
 /** How far the body is turned from the aim behind the weapon (radians: the support shoulder leads). */
 const BLADE = 0.42;
 const outfitOf = (team: Team | null): Outfit => team ?? "ranger";
@@ -46,6 +49,9 @@ export interface SoldierState {
 
 export interface HitVolume { zone: Zone; a: V3; b: V3; r: number }
 
+/** One soldier's models in one outfit: the skinned body, and the gear of each part that has some. */
+interface Body { skin: GLTFModel; gear: Partial<Record<PartName, GLTFModel>> }
+
 /** The middle joint of a two-bone chain from `root` to `target`, bent toward `pole`; `end` is where it reaches. */
 function bend(root: V3, target: V3, l1: number, l2: number, pole: V3): { joint: V3; end: V3 } {
   let d = sub(target, root);
@@ -59,8 +65,8 @@ function bend(root: V3, target: V3, l1: number, l2: number, pole: V3): { joint: 
 }
 
 export class Soldiers {
-  /** The body's parts for each slot in each outfit, parked until shown. */
-  private readonly bodies: Partial<Record<Outfit, GLTFModel[]>>[] = Array.from({ length: SLOTS }, () => ({}));
+  /** The body of each slot in each outfit, parked until shown. */
+  private readonly bodies: Partial<Record<Outfit, Body>>[] = Array.from({ length: SLOTS }, () => ({}));
   private readonly worn: (Outfit | null)[] = new Array(SLOTS).fill(null);
   private readonly guns: GLTFModel[][] = [];
   private readonly gunShown = new Int8Array(SLOTS).fill(-1);
@@ -77,7 +83,6 @@ export class Soldiers {
     // until needed. All of it is made here: a model that first appears in a frame is loaded in that frame, and a
     // frame's script has 50 ms.
     for (let s = 0; s < SLOTS; s++) {
-      for (const outfit of OUTFITS) this.body(s, outfit);
       this.guns.push(LOADOUT.map((id, k) => {
         const g = new GLTFModel(`assets/weapons/${WEAPON_MODEL[id]}.glb`, { nodes: ["body", "mag", "bolt"] });
         g.name = `soldier ${s} ${id}`;
@@ -86,27 +91,38 @@ export class Soldiers {
         scene.add(g);
         return g;
       }));
+      // Each body is posed once, standing, before the scene is built: a body the game poses is skinned on its own,
+      // again only when its pose changes (a parked one never is).
+      for (const outfit of OUTFITS) {
+        const team = (OUTFITS.indexOf(outfit) < 2 ? outfit : null) as Team | null;
+        this.pose(newSoldier(s, team));
+        this.hide(s);
+      }
     }
   }
 
-  private body(slot: number, outfit: Outfit): GLTFModel[] {
-    return (this.bodies[slot]![outfit] ??= PARTS.map((part, i) => {
-      const m = new GLTFModel(OPERATOR_MODEL, { nodes: [partNode(part, outfit)] });
-      m.name = `soldier ${slot} ${outfit} ${part}`;
-      m.movable = true;
-      this.scene.add(m);
-      this.park(m, slot, i);
-      return m;
-    }));
-  }
-
-  private park(m: GLTFModel, slot: number, i: number): void {
-    m.position.set(-40 - 2 * slot, -360 - 2 * i, 0);
+  private body(slot: number, outfit: Outfit): Body {
+    return (this.bodies[slot]![outfit] ??= ((): Body => {
+      const add = (m: GLTFModel, what: string) => {
+        m.name = `soldier ${slot} ${outfit} ${what}`;
+        m.movable = true;
+        this.scene.add(m);
+        return m;
+      };
+      const gear: Body["gear"] = {};
+      for (const part of META.gear) gear[part] = add(new GLTFModel(OPERATOR_MODEL, { nodes: [partNode(part, outfit)] }), part);
+      return { skin: add(new GLTFModel(OPERATOR_MODEL, { nodes: [bodyNode(outfit)] }), "body"), gear };
+    })());
   }
 
   private undress(slot: number): void {
     const outfit = this.worn[slot];
-    if (outfit) this.bodies[slot]![outfit]!.forEach((m, i) => this.park(m, slot, i));
+    if (outfit) {
+      // (Out of sight below the map; the skinned body keeps its pose there.)
+      const b = this.bodies[slot]![outfit]!;
+      b.skin.position.set(-40 - 2 * slot, -360, 0);
+      Object.values(b.gear).forEach((m, i) => m.position.set(-40 - 2 * slot, -362 - 2 * i, 0));
+    }
     this.worn[slot] = null;
   }
 
@@ -132,7 +148,7 @@ export class Soldiers {
       this.undress(slot);
       this.worn[slot] = outfit;
     }
-    const models = this.body(slot, outfit);
+    const body = this.body(slot, outfit);
     const sy = Math.sin(s.yaw), cy = Math.cos(s.yaw);
     const f: V3 = [-sy, 0, -cy], r: V3 = [cy, 0, -sy];
     const c = s.crouch;
@@ -147,14 +163,19 @@ export class Soldiers {
     const feet: V3 = [s.position[0], s.position[1], s.position[2]];
     const laid = (p: V3): V3 => (tip === 0 ? p : add(add(feet, turn(sub(p, feet), r, -tip)), [0, 0.13 * fall, 0]));
     const laidDir = (d: V3): V3 => (tip === 0 ? d : turn(d, r, -tip));
-    /** Places a part: its origin, its right and up axes (its back axis follows). */
+    /** Places a part: its origin, its right and up axes (its back axis follows). A joint of the skinned body is
+     *  given in the body's space: from its origin, at the feet. */
+    const joints: Record<string, number[]> = {};
     const place = (part: PartName, o: V3, x: V3, y: V3) => {
-      const m = models[PARTS.indexOf(part)]!;
       const lx = laidDir(x), ly = laidDir(y);
       const q = basisQuat(lx, ly, cross(lx, ly));
       const p = laid(o);
-      m.position.set(p[0], p[1], p[2]);
-      m.quaternion.set(q[0], q[1], q[2], q[3]);
+      const m = body.gear[part];
+      if (m) {
+        m.position.set(p[0], p[1], p[2]);
+        m.quaternion.set(q[0], q[1], q[2], q[3]);
+      }
+      if ((JOINTS as string[]).includes(part)) joints[part] = [p[0] - feet[0], p[1] - feet[1], p[2] - feet[2], q[0], q[1], q[2], q[3]];
     };
     /** Places the two bones of a limb, which bend about one axis: `hinge` (the parts' X). */
     const limb = (upper: PartName, lower: PartName, root: V3, joint: V3, end: V3, hinge: V3) => {
@@ -241,6 +262,8 @@ export class Soldiers {
     volumes.push({ zone: "body", a: mad(P, UP, 0.02), b: mad(W, tUp, 0.38), r: 0.215 });
     volumes.push({ zone: "head", a: mad(headC, aimU, 0.015), b: headC, r: 0.15 });
     this.volumes[slot] = s.dead >= 0 ? [] : volumes;
+    body.skin.position.set(feet[0], feet[1], feet[2]);
+    body.skin.animation = { nodes: joints };
   }
 
   /**
